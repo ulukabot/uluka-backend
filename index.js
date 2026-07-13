@@ -483,6 +483,61 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
             }
         }
 
+                // ─── 7. TRADE_SIGNAL (Hoots) ──────────────────────────────
+        if (type === 'TRADE_SIGNAL') {
+            try {
+                const premiumMsg = `
+🦉 ULUKA PREMIUM HOOT
+Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
+Symbol: ${d.symbol}
+Strategy: ${d.strategy}
+Entry: ${d.entry}
+SL: ${d.sl}
+TP1: ${d.tp1} RR 1:${d.rr1}
+TP2: ${d.tp2} RR 1:${d.rr2}
+TP3: ${d.tp3} RR 1:${d.rr3}
+Lot: ${d.lot}
+Ticket: ${d.ticket}
+                `;
+                const freeMsg = `
+🦉 FREE HOOT
+${d.action} on ${d.symbol}
+TP1: ${d.tp1}
+💎 Join Premium for full levels
+                `;
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
+                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
+                return res.send('HOOT_SENT');
+            } catch(e) {
+                console.error('🔥 TRADE_SIGNAL error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
+
+        // ─── 8. POSITION_UPDATE ──────────────────────────────────
+        if (type === 'POSITION_UPDATE') {
+            try {
+                const msg = `⚖️ POSITION UPDATE\n${d.symbol} ${d.direction}\nNew SL: ${d.new_sl}\n${d.be_text || ''}`;
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
+                return res.send('OK');
+            } catch(e) {
+                console.error('🔥 POSITION_UPDATE error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
+
+        // ─── 9. GuardianAlert ────────────────────────────────────
+        if (type === 'GuardianAlert') {
+            try {
+                const msg = `👼 GUARDIAN ANGEL\n${d.msg || 'Alert triggered'}\nClient: ${d.client || ''}\nAccount: ${d.account || ''}\nDD: ${d.dd || 'N/A'}%\nEquity: $${d.equity || 'N/A'}`;
+                if (ADMIN_CHAT_ID) await sendToTelegram(ADMIN_CHAT_ID, msg);
+                return res.send('OK');
+            } catch(e) {
+                console.error('🔥 GuardianAlert error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
+
         // ─── 6. If unknown type, return 404 ─────────────────────
         return res.status(404).send('Not Found');
     } catch (e) {
