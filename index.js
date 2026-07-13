@@ -358,7 +358,9 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 // ─── ROUTE 15: HEALTH ───────────────────────────────────────
 app.get('/health', (req, res) => res.send('OK'));
 
-// ─── ROUTE 16: POST / (Handles EA background POSTs to root) ───
+
+
+       // ─── ROUTE 16: POST / (Handles ALL EA background POSTs) ───
 app.post('/', async (req, res) => {
     try {
         const d = req.body;
@@ -408,7 +410,6 @@ app.post('/', async (req, res) => {
 
         // ─── 4. AI_DECISION ─────────────────────────────────────
         if (type === 'AI_DECISION') {
-            // Copy the logic from app.post('/ai_decision')
             if (!CLAUDE_API_KEY) {
                 return res.json({
                     decision: 'TAKE',
@@ -466,14 +467,15 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 
         // ─── 5. ActivationAlert ──────────────────────────────────
         if (type === 'ActivationAlert') {
-            // Just acknowledge it to stop the 404 error
+            console.log('📢 Activation alert received from:', d.source, d.client);
+            await sendAdminAlert(`🖥 EA ACTIVATION\n${d.text || 'Client activated'}`);
             return res.send('OK');
         }
 
-                // ─── 6. TRADE_CLOSE ─────────────────────────────────────
+        // ─── 6. TRADE_CLOSE ─────────────────────────────────────
         if (type === 'TRADE_CLOSE') {
             try {
-                const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: ${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
+                const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: $${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
                 if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
                 if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
                 return res.send('CLOSE_OK');
@@ -483,7 +485,7 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
             }
         }
 
-                // ─── 7. TRADE_SIGNAL (Hoots) ──────────────────────────────
+        // ─── 7. TRADE_SIGNAL (Hoots) ──────────────────────────────
         if (type === 'TRADE_SIGNAL') {
             try {
                 const premiumMsg = `
@@ -538,17 +540,37 @@ TP1: ${d.tp1}
             }
         }
 
-        // ─── 6. If unknown type, return 404 ─────────────────────
+        // ─── 10. DAILY_EOD (Master) ──────────────────────────────
+        if (type === 'DAILY_EOD') {
+            try {
+                const msg = `📊 DAILY EOD REPORT (Master)\nAccount: ${d.account_id || d.account}\nClient: ${d.client || 'Master'}\nTrades: ${d.trades}\nWins: ${d.wins}\nLosses: ${d.losses}\nWin Rate: ${d.win_rate}%\nRealized: $${d.realized}\nFloating: $${d.floating}\nTotal P&L: $${d.total_pnl}\nBalance: $${d.balance}\nEquity: $${d.equity}\nHealth: ${d.health}`;
+                if (ADMIN_CHAT_ID) await sendToTelegram(ADMIN_CHAT_ID, msg);
+                return res.send('OK');
+            } catch(e) {
+                console.error('🔥 DAILY_EOD error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
+
+        // ─── 11. ClientEOD (Client) ──────────────────────────────
+        if (type === 'ClientEOD') {
+            try {
+                const msg = `🦉 YOUR DAILY REPORT\n${d.date || ''}\nP&L: $${d.total_pnl || 0}\nBalance: $${d.balance || 0}`;
+                if (d.chat_id) await sendToTelegram(d.chat_id, msg);
+                return res.send('OK');
+            } catch(e) {
+                console.error('🔥 ClientEOD error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
+
+        // ─── 12. Unknown type ─────────────────────────────────────
+        console.warn('⚠️ Unknown POST type:', type);
         return res.status(404).send('Not Found');
     } catch (e) {
         console.error('🔥 POST / error:', e.message);
         res.status(500).send('ERROR');
     }
-});
-// ─── EXPLICIT ROOT HANDLER (ensures / always works) ───
-app.get('/', (req, res) => {
-    console.log('✅ Root route (explicit) hit!');
-    res.send('OK');
 });
 
 // ─── ULTIMATE CATCH-ALL (Handles EVERY request to any path) ───
