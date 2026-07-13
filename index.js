@@ -97,6 +97,13 @@ app.get('/', async (req, res) => {
         console.log('Query params:', req.query);
         
         const type = req.query.type;
+
+        // ─── If no type, return OK (for EA's empty cloud sync) ───
+        if (!type) {
+            console.log('ℹ️ No type parameter – returning OK');
+            return res.send('OK');
+        }
+
         if (type === 'validate') {
             console.log('🔍 Validating licence...');
             const result = await handleValidation({
@@ -481,6 +488,19 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
         res.status(500).send('ERROR');
     }
 });
+// ─── ULTIMATE CATCH-ALL (Handles EVERY request to any path) ───
+app.all('*', async (req, res) => {
+    try {
+        console.log(`🔍 [CATCH-ALL] ${req.method} ${req.path}`);
+        console.log('📦 Body:', req.body || 'none');
+        // Return OK for everything – stops all 404s from the EA
+        res.send('OK');
+    } catch (e) {
+        console.error('🔥 Catch-all error:', e.message);
+        res.status(500).send('ERROR');
+    }
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
