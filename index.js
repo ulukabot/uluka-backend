@@ -10,6 +10,7 @@ const app = express();
 app.use(express.json());
 
 app.get('/ping', (req, res) => res.send('pong'));   // <-- ADD THIS
+app.get('/test123', (req, res) => res.send('FIXED VERSION RUNNING'));
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
