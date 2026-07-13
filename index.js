@@ -362,6 +362,125 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 // ─── ROUTE 15: HEALTH ───────────────────────────────────────
 app.get('/health', (req, res) => res.send('OK'));
 
+// ─── ROUTE 16: POST / (Handles EA background POSTs to root) ───
+app.post('/', async (req, res) => {
+    try {
+        const d = req.body;
+        const type = d.type;
+
+        // ─── 1. BILLING_SYNC ───────────────────────────────────
+        if (type === 'BILLING_SYNC') {
+            if (!d.account) return res.status(400).send('MISSING_ACCOUNT');
+            const existing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [d.account]);
+            if (existing.rows[0]) {
+                await pool.query(
+                    `UPDATE billing SET current_balance = $1, net_profit = $2, payee_25 = $3, last_sync = NOW() WHERE account_id = $4`,
+                    [parseFloat(d.balance || 0), parseFloat(d.balance || 0) - existing.rows[0].start_balance, Math.max(0, (parseFloat(d.balance || 0) - existing.rows[0].start_balance) * 0.25), d.account]
+                );
+            } else {
+                await pool.query(
+                    `INSERT INTO billing (account_id, client_name, start_balance, current_balance, net_profit, payee_25, status, initial_equity, dd_percent, payee_limit, last_sync, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
+                    [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), '0.00%', 50, d.broker || '']
+                );
+            }
+            const billing = await pool.query('SELECT status FROM billing WHERE account_id = $1', [d.account]);
+            if (billing.rows[0] && billing.rows[0].status === 'PAUSED') return res.send('PAUSED');
+            return res.send('SUCCESS');
+        }
+
+        // ─── 2. OPEN_POSITIONS ──────────────────────────────────
+        if (type === 'OPEN_POSITIONS') {
+            if (!d.account_id) return res.status(400).send('MISSING_ACCOUNT');
+            await pool.query('DELETE FROM open_positions WHERE account_id = $1', [d.account_id]);
+            for (const p of (d.positions || [])) {
+                await pool.query(
+                    `INSERT INTO open_positions (account_id, symbol, direction, lot, open_price, pips, floating_pnl, strategy, ticket, updated) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
+                    [d.account_id, p.symbol, p.direction, parseFloat(p.lot || 0), parseFloat(p.open_price || 0), parseFloat(p.pips || 0), parseFloat(p.floating_pnl || 0), p.strategy || '', p.ticket || '']
+                );
+            }
+            return res.send('OK');
+        }
+
+        // ─── 3. TRADE_LOG ──────────────────────────────────────
+        if (type === 'TRADE_LOG') {
+            await pool.query(
+                `INSERT INTO trade_log (time, account_id, source, symbol, action, price, lot, pnl, result, strategy, balance, equity, ai_decision, ai_reason, news_sentiment, news_summary, cot_sentiment, shadow_mode, client_name) VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+                [d.account_id, d.source || 'UNKNOWN', d.symbol, d.action, d.price || 0, d.lot || 0, d.pnl_value || 0, d.pnl_text || '', d.strategy || '', d.balance || 0, d.equity || 0, d.ai_decision || 'N/A', d.ai_reason || '', d.news_sentiment || 'NEUTRAL', d.news_summary || '', d.cot_sentiment || 'NEUTRAL', d.shadow_mode === 'TRUE', d.client || '']
+            );
+            return res.send('OK');
+        }
+
+        // ─── 4. AI_DECISION ─────────────────────────────────────
+        if (type === 'AI_DECISION') {
+            // Copy the logic from app.post('/ai_decision')
+            if (!CLAUDE_API_KEY) {
+                return res.json({
+                    decision: 'TAKE',
+                    confidence_adjustment: 0,
+                    risk_multiplier: 1.0,
+                    reason: 'No Claude key',
+                    news_sentiment: 'NEUTRAL',
+                    news_summary: '',
+                    cot_sentiment: 'NEUTRAL'
+                });
+            }
+            const context = d;
+            const prompt = `
+Trade: ${context.symbol} ${context.action}.
+Confidence: ${context.confidence || 50}.
+HTF bias: ${context.htf_bias || 'NEUTRAL'}.
+Session: ${context.session || 'London'}.
+Daily P&L: ${context.daily_pnl || 0}.
+Health: ${context.health || 50}.
+Last trades: ${JSON.stringify(context.last_trades || [])}.
+Decision: TAKE only if all conditions strong. Default SKIP if uncertain.
+Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_multiplier":1.0,"reason":"brief","news_sentiment":"NEUTRAL","news_summary":"","cot_sentiment":"NEUTRAL"}
+            `;
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': CLAUDE_API_KEY,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'claude-haiku-4-5-20251001',
+                    max_tokens: 200,
+                    system: 'You are a JSON-only responder.',
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+            const data = await response.json();
+            let text = data.content?.[0]?.text || '{"decision":"TAKE","reason":"Fallback"}';
+            const match = text.match(/\{.*\}/s);
+            if (match) {
+                const result = JSON.parse(match[0]);
+                return res.json({
+                    decision: result.decision === 'TAKE' ? 'TAKE' : 'SKIP',
+                    confidence_adjustment: parseInt(result.confidence_adjustment) || 0,
+                    risk_multiplier: parseFloat(result.risk_multiplier) || 1.0,
+                    reason: result.reason || '',
+                    news_sentiment: result.news_sentiment || 'NEUTRAL',
+                    news_summary: result.news_summary || '',
+                    cot_sentiment: result.cot_sentiment || 'NEUTRAL'
+                });
+            }
+            return res.json({ decision: 'TAKE', reason: 'Claude parse fallback' });
+        }
+
+        // ─── 5. ActivationAlert ──────────────────────────────────
+        if (type === 'ActivationAlert') {
+            // Just acknowledge it to stop the 404 error
+            return res.send('OK');
+        }
+
+        // ─── 6. If unknown type, return 404 ─────────────────────
+        return res.status(404).send('Not Found');
+    } catch (e) {
+        console.error('🔥 POST / error:', e.message);
+        res.status(500).send('ERROR');
+    }
+});
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
