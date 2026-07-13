@@ -99,12 +99,7 @@ app.get('/', async (req, res) => {
         
         const type = req.query.type;
 
-        // ─── If no type, return OK (for EA's empty cloud sync) ───
-        if (!type) {
-            console.log('ℹ️ No type parameter – returning OK');
-            return res.send('OK');
-        }
-
+        // If type is 'validate', handle licence validation
         if (type === 'validate') {
             console.log('🔍 Validating licence...');
             const result = await handleValidation({
@@ -116,18 +111,11 @@ app.get('/', async (req, res) => {
             });
             console.log('📤 Validation result:', result.status, result.body);
             return res.status(result.status).send(result.body);
-        } else if (type === 'get_config') {
-            console.log('⚙️ Config requested');
-            return res.json({
-                kill_switch: 'OFF',
-                multiplier: 1.0,
-                min_confidence: 65,
-                news_filter: 'ON'
-            });
-        } else {
-            console.log('❌ Unknown type:', type);
-            return res.status(404).send('Not Found');
         }
+        
+        // For any other request (including no type), return OK
+        console.log('ℹ️ Returning OK (no validate)');
+        return res.send('OK');
     } catch (err) {
         console.error('🔥 Root route error:', err.message);
         console.error(err.stack);
