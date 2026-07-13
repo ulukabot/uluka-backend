@@ -488,6 +488,12 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
         res.status(500).send('ERROR');
     }
 });
+// ─── EXPLICIT ROOT HANDLER (ensures / always works) ───
+app.get('/', (req, res) => {
+    console.log('✅ Root route (explicit) hit!');
+    res.send('OK');
+});
+
 // ─── ULTIMATE CATCH-ALL (Handles EVERY request to any path) ───
 app.all('*', async (req, res) => {
     try {
