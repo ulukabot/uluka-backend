@@ -470,6 +470,19 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
             return res.send('OK');
         }
 
+                // ─── 6. TRADE_CLOSE ─────────────────────────────────────
+        if (type === 'TRADE_CLOSE') {
+            try {
+                const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: ${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
+                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
+                return res.send('CLOSE_OK');
+            } catch(e) {
+                console.error('🔥 TRADE_CLOSE error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
+
         // ─── 6. If unknown type, return 404 ─────────────────────
         return res.status(404).send('Not Found');
     } catch (e) {
