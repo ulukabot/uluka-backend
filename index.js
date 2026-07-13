@@ -90,25 +90,38 @@ async function handleValidation(params) {
 
 // ─── ROUTE 1: LEGACY GET (EA uses GET with query params) ──
 app.get('/', async (req, res) => {
-    const type = req.query.type;
-    if (type === 'validate') {
-        const result = await handleValidation({
-            key: req.query.key || '',
-            account: req.query.account || '',
-            instance: req.query.instance || '',
-            balance: req.query.balance || '',
-            broker: req.query.broker || ''
-        });
-        return res.status(result.status).send(result.body);
-    } else if (type === 'get_config') {
-        return res.json({
-            kill_switch: 'OFF',
-            multiplier: 1.0,
-            min_confidence: 65,
-            news_filter: 'ON'
-        });
-    } else {
-        return res.status(404).send('Not Found');
+    try {
+        console.log('✅ Root route hit!');
+        console.log('Query params:', req.query);
+        
+        const type = req.query.type;
+        if (type === 'validate') {
+            console.log('🔍 Validating licence...');
+            const result = await handleValidation({
+                key: req.query.key || '',
+                account: req.query.account || '',
+                instance: req.query.instance || '',
+                balance: req.query.balance || '',
+                broker: req.query.broker || ''
+            });
+            console.log('📤 Validation result:', result.status, result.body);
+            return res.status(result.status).send(result.body);
+        } else if (type === 'get_config') {
+            console.log('⚙️ Config requested');
+            return res.json({
+                kill_switch: 'OFF',
+                multiplier: 1.0,
+                min_confidence: 65,
+                news_filter: 'ON'
+            });
+        } else {
+            console.log('❌ Unknown type:', type);
+            return res.status(404).send('Not Found');
+        }
+    } catch (err) {
+        console.error('🔥 Root route error:', err.message);
+        console.error(err.stack);
+        res.status(500).send('Internal Server Error: ' + err.message);
     }
 });
 
