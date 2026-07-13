@@ -9,6 +9,12 @@ const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
 
+app.get('/ping', (req, res) => res.send('pong'));   // <-- ADD THIS
+
+// ─── PostgreSQL Connection ────────────────────────────────
+const pool = new Pool({
+    // ...
+});
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
