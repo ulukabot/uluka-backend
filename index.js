@@ -9,6 +9,8 @@ const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
 
+app.get('/test-route', (req, res) => res.send('New code is live!'));
+
 // DEPLOYMENT FIX – 14 JUL 2026
 app.get('/ping', (req, res) => res.send('pong'));   // <-- ADD THIS
 // ─── PostgreSQL Connection ────────────────────────────────
