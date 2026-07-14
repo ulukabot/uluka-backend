@@ -10,6 +10,7 @@ const app = express();
 app.use(express.json());
 
 // DEPLOYMENT FIX – 14 JUL 2026
+// BRANCH: ULUKA – DEPLOYMENT FIX 14 JUL 2026
 app.get('/ping', (req, res) => res.send('pong'));   // <-- ADD THIS
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
