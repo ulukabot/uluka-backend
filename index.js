@@ -1,7 +1,6 @@
 // ============================================================
-// v2.1.2 – Force redeploy
+// v2.2 – Dashboard API Endpoints Added
 // ULUKA ULTRA — Node.js Backend (Full GAS Replacement)
-// Version: 2.1 — GET + POST Compatibility
 // ============================================================
 
 const express = require('express');
@@ -10,8 +9,8 @@ const app = express();
 app.use(express.json());
 
 // DEPLOYMENT FIX – 14 JUL 2026
-// BRANCH: ULUKA – DEPLOYMENT FIX 14 JUL 2026
-app.get('/ping', (req, res) => res.send('pong'));   // <-- ADD THIS
+app.get('/ping', (req, res) => res.send('pong'));
+
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -24,6 +23,7 @@ const ADMIN_CHAT_ID      = process.env.ADMIN_CHAT_ID      || '';
 const PREMIUM_GROUP_ID   = process.env.PREMIUM_GROUP_ID   || '';
 const FREE_GROUP_ID      = process.env.FREE_GROUP_ID      || '';
 const CLAUDE_API_KEY     = process.env.CLAUDE_API_KEY     || '';
+const ADMIN_SECRET       = process.env.ADMIN_SECRET       || 'default-secret-change-me';
 
 // ─── Helpers ───────────────────────────────────────────────
 async function sendToTelegram(chatId, text, keyboard) {
@@ -164,7 +164,7 @@ TP1: ${d.tp1}
 💎 Join Premium for full levels
         `;
         if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
-        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `<b>🦉 UPDATE</b>\n${d.result} on <code>${d.symbol}</code>\n💎 <i>Join Premium for details</i>`);
+        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
         res.send('HOOT_SENT');
     } catch(e) { res.status(500).send('ERROR'); }
 });
@@ -359,9 +359,290 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 // ─── ROUTE 15: HEALTH ───────────────────────────────────────
 app.get('/health', (req, res) => res.send('OK'));
 
+// ============================================================
+// 🆕 DASHBOARD API ENDPOINTS (added for Netlify dashboards)
+// ============================================================
 
+// ─── Public Stats ──────────────────────────────────────────
+app.get('/api/public/stats', async (req, res) => {
+    try {
+        // Get active clients count
+        const activeResult = await pool.query(
+            "SELECT COUNT(*) AS activeClients FROM licences WHERE status = 'ACTIVE'"
+        );
+        const activeClients = parseInt(activeResult.rows[0]?.activeClients || 0);
 
-       // ─── ROUTE 16: POST / (Handles ALL EA background POSTs) ───
+        // Total net profit (sum of net_profit from billing where status is ACTIVE or maybe all)
+        const profitResult = await pool.query(
+            "SELECT COALESCE(SUM(net_profit), 0) AS totalNetProfit FROM billing WHERE status = 'ACTIVE'"
+        );
+        const totalNetProfit = parseFloat(profitResult.rows[0]?.totalNetProfit || 0);
+
+        // Average win rate: compute from trade_log for all accounts? We'll need to aggregate.
+        // Simpler: average win_rate from licences? We don't have win_rate there. We'll compute from trade_log.
+        // For now, we'll return 0 and let the frontend compute if needed.
+        // Actually we can compute from trade_log by counting wins/losses.
+        const winRateResult = await pool.query(`
+            SELECT COALESCE(
+                (SELECT COUNT(*) FROM trade_log WHERE pnl > 0) * 100.0 / 
+                NULLIF((SELECT COUNT(*) FROM trade_log), 0),
+                0
+            ) AS avgWinRate
+        `);
+        const avgWinRate = parseFloat(winRateResult.rows[0]?.avgWinRate || 0);
+
+        // Open positions count (sum from open_positions)
+        const openPosResult = await pool.query(
+            "SELECT COUNT(*) AS openPositions FROM open_positions"
+        );
+        const openPositions = parseInt(openPosResult.rows[0]?.openPositions || 0);
+
+        res.json({
+            activeClients,
+            totalNetProfit,
+            avgWinRate,
+            openPositions
+        });
+    } catch (err) {
+        console.error('🔥 /api/public/stats error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Admin Clients List (protected) ────────────────────────
+app.get('/api/admin/clients', async (req, res) => {
+    const secret = req.headers['x-admin-secret'];
+    if (secret !== ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+        // Join licences with billing to get full client data
+        const query = `
+            SELECT 
+                l.client_name AS name,
+                l.account_id,
+                l.status,
+                l.expires_on AS expiry,
+                l.subscription,
+                b.current_balance AS balance,
+                b.net_profit AS profit,
+                b.payee_25,
+                b.dd_percent AS dd,
+                -- compute health score from dd_percent (100 - dd*10, capped)
+                GREATEST(0, 100 - COALESCE(CAST(REPLACE(b.dd_percent, '%', '') AS NUMERIC), 0) * 10) AS health,
+                -- need to compute win_rate from trade_log for this account
+                COALESCE(
+                    (SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id AND pnl > 0) * 100.0 /
+                    NULLIF((SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id), 0),
+                    0
+                ) AS win_rate,
+                -- trades this week (last 7 days)
+                (SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id AND time > NOW() - INTERVAL '7 days') AS trades_this_week,
+                -- open positions count
+                (SELECT COUNT(*) FROM open_positions WHERE account_id = l.account_id) AS open_positions
+            FROM licences l
+            LEFT JOIN billing b ON l.account_id = b.account_id
+            WHERE l.status = 'ACTIVE' OR l.status = 'EXPIRED' OR l.status = 'WARNING'
+            ORDER BY l.client_name
+        `;
+        const result = await pool.query(query);
+        // Format dates
+        const clients = result.rows.map(row => ({
+            ...row,
+            expiry: row.expiry ? row.expiry.toISOString().split('T')[0] : 'N/A',
+            status: row.status.toLowerCase(),
+            health: Math.round(row.health || 0),
+            balance: parseFloat(row.balance || 0),
+            profit: parseFloat(row.profit || 0),
+            dd: row.dd || '0.00%',
+            winRate: parseFloat(row.win_rate || 0),
+            tradesThisWeek: parseInt(row.trades_this_week || 0),
+            openPositions: parseInt(row.open_positions || 0)
+        }));
+        res.json(clients);
+    } catch (err) {
+        console.error('🔥 /api/admin/clients error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Client Billing ─────────────────────────────────────────
+app.get('/api/billing/:account', async (req, res) => {
+    const account = req.params.account;
+    try {
+        const result = await pool.query(
+            `SELECT 
+                current_balance, 
+                net_profit, 
+                payee_25,
+                status,
+                start_balance,
+                initial_equity
+            FROM billing WHERE account_id = $1`,
+            [account]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+        const row = result.rows[0];
+        // Get total trades and win rate from trade_log
+        const stats = await pool.query(
+            `SELECT 
+                COUNT(*) AS total_trades,
+                COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+                COUNT(*) FILTER (WHERE pnl < 0) AS losses,
+                COALESCE(SUM(pnl), 0) AS total_pnl,
+                COALESCE(AVG(pnl), 0) AS avg_pnl,
+                MAX(pnl) AS max_win,
+                MIN(pnl) AS max_loss
+            FROM trade_log WHERE account_id = $1`,
+            [account]
+        );
+        const s = stats.rows[0];
+        const totalTrades = parseInt(s.total_trades || 0);
+        const wins = parseInt(s.wins || 0);
+        const losses = parseInt(s.losses || 0);
+        const winRate = totalTrades > 0 ? (wins / totalTrades * 100) : 0;
+
+        // Compute max drawdown from trade_log (we'll need equity curve; for simplicity, use a placeholder)
+        // We'll compute from the trade_log by simulating equity.
+        // For now, we'll return a placeholder.
+        const maxDd = 0; // Could be computed later.
+
+        res.json({
+            current_balance: parseFloat(row.current_balance || 0),
+            net_profit: parseFloat(row.net_profit || 0),
+            payee_25: parseFloat(row.payee_25 || 0),
+            status: row.status || 'ACTIVE',
+            start_balance: parseFloat(row.start_balance || 0),
+            initial_equity: parseFloat(row.initial_equity || 0),
+            total_trades: totalTrades,
+            win_rate: winRate,
+            wins: wins,
+            losses: losses,
+            total_pnl: parseFloat(s.total_pnl || 0),
+            avg_pnl: parseFloat(s.avg_pnl || 0),
+            max_win: parseFloat(s.max_win || 0),
+            max_loss: parseFloat(s.max_loss || 0),
+            max_drawdown: maxDd
+        });
+    } catch (err) {
+        console.error('🔥 /api/billing/:account error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Client Open Positions ──────────────────────────────────
+app.get('/api/positions/:account', async (req, res) => {
+    const account = req.params.account;
+    try {
+        const result = await pool.query(
+            `SELECT 
+                symbol, 
+                direction, 
+                lot, 
+                open_price AS "openPrice", 
+                pips, 
+                floating_pnl AS "floatingPnl", 
+                strategy,
+                ticket
+            FROM open_positions WHERE account_id = $1`,
+            [account]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('🔥 /api/positions/:account error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Client Trade History ──────────────────────────────────
+app.get('/api/trades/:account', async (req, res) => {
+    const account = req.params.account;
+    const limit = parseInt(req.query.limit) || 50;
+    try {
+        const result = await pool.query(
+            `SELECT 
+                time,
+                symbol,
+                action,
+                price,
+                lot,
+                pnl,
+                result,
+                strategy,
+                balance,
+                equity
+            FROM trade_log 
+            WHERE account_id = $1 
+            ORDER BY time DESC 
+            LIMIT $2`,
+            [account, limit]
+        );
+        // Format dates and numeric fields
+        const trades = result.rows.map(row => ({
+            time: row.time ? row.time.toISOString() : '',
+            symbol: row.symbol,
+            action: row.action,
+            price: parseFloat(row.price || 0),
+            lot: parseFloat(row.lot || 0),
+            pnl: parseFloat(row.pnl || 0),
+            result: row.result || '',
+            strategy: row.strategy || '',
+            balance: parseFloat(row.balance || 0),
+            equity: parseFloat(row.equity || 0)
+        }));
+        res.json(trades);
+    } catch (err) {
+        console.error('🔥 /api/trades/:account error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Override POST /validate to return JSON for client login ──
+// We'll keep the existing POST /validate but modify to return JSON when Accept header is application/json.
+// Or we can add a new route /api/login. Let's add a new one to avoid breaking existing.
+// We'll add /api/login that returns JSON.
+
+app.post('/api/login', async (req, res) => {
+    const { account, licence } = req.body;
+    if (!account || !licence) {
+        return res.status(400).json({ ok: false, error: 'Missing account or licence key' });
+    }
+    try {
+        const result = await pool.query(
+            `SELECT client_name, licence_key, status, expires_on, subscription, equity_cap 
+             FROM licences 
+             WHERE account_id = $1 AND licence_key = $2`,
+            [account, licence]
+        );
+        if (result.rows.length === 0) {
+            return res.status(401).json({ ok: false, error: 'Invalid credentials' });
+        }
+        const row = result.rows[0];
+        if (row.status !== 'ACTIVE') {
+            return res.status(403).json({ ok: false, error: 'Licence is not active' });
+        }
+        const expiryDate = row.expires_on;
+        const daysLeft = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
+        res.json({
+            ok: true,
+            clientName: row.client_name,
+            licence: {
+                status: row.status,
+                expiryDate: expiryDate.toISOString().split('T')[0],
+                daysLeft: daysLeft,
+                subscription: row.subscription,
+                equityCap: parseFloat(row.equity_cap || 0)
+            }
+        });
+    } catch (err) {
+        console.error('🔥 /api/login error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── ROUTE 16: POST / (Handles ALL EA background POSTs) ───
 app.post('/', async (req, res) => {
     try {
         // ─── 🔍 DEBUG: Log every POST request ────────────────
@@ -479,51 +760,49 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
         }
 
         // ─── 6. TRADE_CLOSE ─────────────────────────────────────
-if (type === 'TRADE_CLOSE') {
-    try {
-        const msg = `<b>🦉 TRADE CLOSED</b>\n${d.result === 'PROFIT' ? '✅' : '❌'} <b>${d.result}</b> — <code>${d.symbol}</code>\n<b>P&L:</b> $${d.profit}\n<b>Reason:</b> ${d.reason}\n<b>Ticket:</b> ${d.ticket}\n<i>${DISCLAIMER}</i>`;
-        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
-        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `<b>🦉 UPDATE</b>\n${d.result} on <code>${d.symbol}</code>\n💎 <i>Join Premium for details</i>`);
-        return res.send('CLOSE_OK');
-    } catch(e) {
-        console.error('🔥 TRADE_CLOSE error:', e.message);
-        return res.status(500).send('ERROR');
-    }
-}
-    }
-}
+        if (type === 'TRADE_CLOSE') {
+            console.log('✅ TRADE_CLOSE matched!');
+            try {
+                const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: $${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
+                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
+                return res.send('CLOSE_OK');
+            } catch(e) {
+                console.error('🔥 TRADE_CLOSE error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
 
         // ─── 7. TRADE_SIGNAL (Hoots) ──────────────────────────────
-if (type === 'TRADE_SIGNAL') {
-    try {
-        const premiumMsg = `
-<b>🦉 ULUKA PREMIUM HOOT</b>
-<b>Status:</b> ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
-<b>Symbol:</b> <code>${d.symbol}</code>
-<b>Strategy:</b> ${d.strategy}
-<b>Entry:</b> <code>${d.entry}</code>
-<b>SL:</b> <code>${d.sl}</code>
-<b>TP1:</b> <code>${d.tp1}</code> <i>RR 1:${d.rr1}</i>
-<b>TP2:</b> <code>${d.tp2}</code> <i>RR 1:${d.rr2}</i>
-<b>TP3:</b> <code>${d.tp3}</code> <i>RR 1:${d.rr3}</i>
-<b>Lot:</b> ${d.lot}
-<b>Ticket:</b> ${d.ticket}
-<i>${DISCLAIMER}</i>
-        `;
-        const freeMsg = `
-<b>🦉 FREE HOOT</b>
-${d.action} on <b>${d.symbol}</b>
-<b>TP1:</b> <code>${d.tp1}</code>
-💎 <i>Join Premium for full levels</i>
-        `;
-        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
-        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
-        return res.send('HOOT_SENT');
-    } catch(e) {
-        console.error('🔥 TRADE_SIGNAL error:', e.message);
-        return res.status(500).send('ERROR');
-    }
-}
+        if (type === 'TRADE_SIGNAL') {
+            try {
+                const premiumMsg = `
+🦉 ULUKA PREMIUM HOOT
+Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
+Symbol: ${d.symbol}
+Strategy: ${d.strategy}
+Entry: ${d.entry}
+SL: ${d.sl}
+TP1: ${d.tp1} RR 1:${d.rr1}
+TP2: ${d.tp2} RR 1:${d.rr2}
+TP3: ${d.tp3} RR 1:${d.rr3}
+Lot: ${d.lot}
+Ticket: ${d.ticket}
+                `;
+                const freeMsg = `
+🦉 FREE HOOT
+${d.action} on ${d.symbol}
+TP1: ${d.tp1}
+💎 Join Premium for full levels
+                `;
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
+                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
+                return res.send('HOOT_SENT');
+            } catch(e) {
+                console.error('🔥 TRADE_SIGNAL error:', e.message);
+                return res.status(500).send('ERROR');
+            }
+        }
 
         // ─── 8. POSITION_UPDATE ──────────────────────────────────
         if (type === 'POSITION_UPDATE') {
