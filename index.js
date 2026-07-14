@@ -363,21 +363,13 @@ app.get('/health', (req, res) => res.send('OK'));
        // ─── ROUTE 16: POST / (Handles ALL EA background POSTs) ───
 app.post('/', async (req, res) => {
     try {
-        const d = req.body;
-        const type = d.type;
-
-        app.post('/', async (req, res) => {
-    try {
         // ─── 🔍 DEBUG: Log every POST request ────────────────
         console.log('📥 [POST /] received');
-        console.log('  Headers:', req.headers);
         console.log('  Body:', req.body);
         console.log('  Type:', req.body?.type || 'undefined');
 
         const d = req.body;
         const type = d.type;
-
-        // ... rest of your existing code ...
 
         // ─── 1. BILLING_SYNC ───────────────────────────────────
         if (type === 'BILLING_SYNC') {
