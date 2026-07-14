@@ -9,9 +9,8 @@ const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
 
-app.get('/version', (req, res) => res.send('v2.1.3 – GLOBAL POST REMOVED'));
+// DEPLOYMENT FIX – 14 JUL 2026
 app.get('/ping', (req, res) => res.send('pong'));   // <-- ADD THIS
-app.get('/test123', (req, res) => res.send('FIXED VERSION RUNNING'));
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
