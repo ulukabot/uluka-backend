@@ -366,6 +366,19 @@ app.post('/', async (req, res) => {
         const d = req.body;
         const type = d.type;
 
+        app.post('/', async (req, res) => {
+    try {
+        // ─── 🔍 DEBUG: Log every POST request ────────────────
+        console.log('📥 [POST /] received');
+        console.log('  Headers:', req.headers);
+        console.log('  Body:', req.body);
+        console.log('  Type:', req.body?.type || 'undefined');
+
+        const d = req.body;
+        const type = d.type;
+
+        // ... rest of your existing code ...
+
         // ─── 1. BILLING_SYNC ───────────────────────────────────
         if (type === 'BILLING_SYNC') {
             if (!d.account) return res.status(400).send('MISSING_ACCOUNT');
@@ -474,6 +487,7 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 
         // ─── 6. TRADE_CLOSE ─────────────────────────────────────
         if (type === 'TRADE_CLOSE') {
+            console.log('✅ TRADE_CLOSE matched!');
             try {
                 const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: $${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
                 if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
