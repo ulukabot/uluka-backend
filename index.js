@@ -9,6 +9,15 @@ const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
 
+// ─── GLOBAL POST CATCH-ALL (must be FIRST) ──────────────
+app.post('*', async (req, res) => {
+    console.log('📥 [GLOBAL POST] Path:', req.path);
+    console.log('📦 Body:', req.body);
+    console.log('🔍 Type:', req.body?.type || 'undefined');
+    // Always return OK – stops all 404s
+    res.send('OK');
+});
+
 app.get('/ping', (req, res) => res.send('pong'));   // <-- ADD THIS
 app.get('/test123', (req, res) => res.send('FIXED VERSION RUNNING'));
 // ─── PostgreSQL Connection ────────────────────────────────
