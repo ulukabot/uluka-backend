@@ -579,6 +579,8 @@ TP1: ${d.tp1}
     }
 });
 
+console.log('✅ ROUTE 16 (POST /) registered');
+
 // ─── ULTIMATE CATCH-ALL (Handles EVERY request to any path) ───
 app.all('*', async (req, res) => {
     try {
