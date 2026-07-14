@@ -164,7 +164,7 @@ TP1: ${d.tp1}
 💎 Join Premium for full levels
         `;
         if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
-        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
+        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `<b>🦉 UPDATE</b>\n${d.result} on <code>${d.symbol}</code>\n💎 <i>Join Premium for details</i>`);
         res.send('HOOT_SENT');
     } catch(e) { res.status(500).send('ERROR'); }
 });
@@ -479,49 +479,51 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
         }
 
         // ─── 6. TRADE_CLOSE ─────────────────────────────────────
-        if (type === 'TRADE_CLOSE') {
-            console.log('✅ TRADE_CLOSE matched!');
-            try {
-                const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: $${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
-                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
-                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
-                return res.send('CLOSE_OK');
-            } catch(e) {
-                console.error('🔥 TRADE_CLOSE error:', e.message);
-                return res.status(500).send('ERROR');
-            }
-        }
+if (type === 'TRADE_CLOSE') {
+    try {
+        const msg = `<b>🦉 TRADE CLOSED</b>\n${d.result === 'PROFIT' ? '✅' : '❌'} <b>${d.result}</b> — <code>${d.symbol}</code>\n<b>P&L:</b> $${d.profit}\n<b>Reason:</b> ${d.reason}\n<b>Ticket:</b> ${d.ticket}\n<i>${DISCLAIMER}</i>`;
+        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
+        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `<b>🦉 UPDATE</b>\n${d.result} on <code>${d.symbol}</code>\n💎 <i>Join Premium for details</i>`);
+        return res.send('CLOSE_OK');
+    } catch(e) {
+        console.error('🔥 TRADE_CLOSE error:', e.message);
+        return res.status(500).send('ERROR');
+    }
+}
+    }
+}
 
         // ─── 7. TRADE_SIGNAL (Hoots) ──────────────────────────────
-        if (type === 'TRADE_SIGNAL') {
-            try {
-                const premiumMsg = `
-🦉 ULUKA PREMIUM HOOT
-Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
-Symbol: ${d.symbol}
-Strategy: ${d.strategy}
-Entry: ${d.entry}
-SL: ${d.sl}
-TP1: ${d.tp1} RR 1:${d.rr1}
-TP2: ${d.tp2} RR 1:${d.rr2}
-TP3: ${d.tp3} RR 1:${d.rr3}
-Lot: ${d.lot}
-Ticket: ${d.ticket}
-                `;
-                const freeMsg = `
-🦉 FREE HOOT
-${d.action} on ${d.symbol}
-TP1: ${d.tp1}
-💎 Join Premium for full levels
-                `;
-                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
-                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
-                return res.send('HOOT_SENT');
-            } catch(e) {
-                console.error('🔥 TRADE_SIGNAL error:', e.message);
-                return res.status(500).send('ERROR');
-            }
-        }
+if (type === 'TRADE_SIGNAL') {
+    try {
+        const premiumMsg = `
+<b>🦉 ULUKA PREMIUM HOOT</b>
+<b>Status:</b> ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
+<b>Symbol:</b> <code>${d.symbol}</code>
+<b>Strategy:</b> ${d.strategy}
+<b>Entry:</b> <code>${d.entry}</code>
+<b>SL:</b> <code>${d.sl}</code>
+<b>TP1:</b> <code>${d.tp1}</code> <i>RR 1:${d.rr1}</i>
+<b>TP2:</b> <code>${d.tp2}</code> <i>RR 1:${d.rr2}</i>
+<b>TP3:</b> <code>${d.tp3}</code> <i>RR 1:${d.rr3}</i>
+<b>Lot:</b> ${d.lot}
+<b>Ticket:</b> ${d.ticket}
+<i>${DISCLAIMER}</i>
+        `;
+        const freeMsg = `
+<b>🦉 FREE HOOT</b>
+${d.action} on <b>${d.symbol}</b>
+<b>TP1:</b> <code>${d.tp1}</code>
+💎 <i>Join Premium for full levels</i>
+        `;
+        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
+        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
+        return res.send('HOOT_SENT');
+    } catch(e) {
+        console.error('🔥 TRADE_SIGNAL error:', e.message);
+        return res.status(500).send('ERROR');
+    }
+}
 
         // ─── 8. POSITION_UPDATE ──────────────────────────────────
         if (type === 'POSITION_UPDATE') {
