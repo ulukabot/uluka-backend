@@ -582,19 +582,6 @@ TP1: ${d.tp1}
 
 console.log('✅ ROUTE 16 (POST /) registered');
 
-// ─── ULTIMATE CATCH-ALL (Handles EVERY request to any path) ───
-app.all('*', async (req, res) => {
-    try {
-        console.log(`🔍 [CATCH-ALL] ${req.method} ${req.path}`);
-        console.log('📦 Body:', req.body || 'none');
-        // Return OK for everything – stops all 404s from the EA
-        res.send('OK');
-    } catch (e) {
-        console.error('🔥 Catch-all error:', e.message);
-        res.status(500).send('ERROR');
-    }
-});
-
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
