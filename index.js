@@ -21,6 +21,12 @@ app.use((req, res, next) => {
     next();
 });
 
+// ─── Global error handler ──────────────────────────────────
+app.use((err, req, res, next) => {
+    console.error('🔥 Global error:', err.stack);
+    res.status(500).json({ error: err.message });
+});
+
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
