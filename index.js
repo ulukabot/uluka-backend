@@ -17,6 +17,7 @@ const pool = new Pool({
 });
 
 // ─── Environment Variables ─────────────────────────────────
+const DEFAULT_PAYEE_LIMIT = process.env.DEFAULT_PAYEE_LIMIT || 5000;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ADMIN_CHAT_ID      = process.env.ADMIN_CHAT_ID      || '';
 const PREMIUM_GROUP_ID   = process.env.PREMIUM_GROUP_ID   || '';
@@ -108,7 +109,7 @@ async function handleValidation(params) {
         } else {
             await pool.query(
                 `INSERT INTO billing (account_id, client_name, start_balance, current_balance, net_profit, payee_25, status, initial_equity, dd_percent, payee_limit, last_sync, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
-                [account, lic.client_name, parseFloat(balance), parseFloat(balance), 0, 0, 'ACTIVE', parseFloat(balance), '0.00%', 50, broker || '']
+                [account, lic.client_name, parseFloat(balance), parseFloat(balance), 0, 0, 'ACTIVE', parseFloat(balance), '0.00%', DEFAULT_PAYEE_LIMIT, broker || '']
             );
         }
     }
@@ -221,7 +222,7 @@ app.post('/billing', async (req, res) => {
         } else {
             await pool.query(
                 `INSERT INTO billing (account_id, client_name, start_balance, current_balance, net_profit, payee_25, status, initial_equity, dd_percent, payee_limit, last_sync, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
-                [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), '0.00%', 50, d.broker || '']
+                [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), '0.00%', DEFAULT_PAYEE_LIMIT, d.broker || '']
             );
         }
         const billing = await pool.query('SELECT status FROM billing WHERE account_id = $1', [d.account]);
@@ -1099,7 +1100,7 @@ app.post('/', async (req, res) => {
             } else {
                 await pool.query(
                     `INSERT INTO billing (account_id, client_name, start_balance, current_balance, net_profit, payee_25, status, initial_equity, dd_percent, payee_limit, last_sync, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
-                    [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), '0.00%', 50, d.broker || '']
+                    [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), '0.00%', DEFAULT_PAYEE_LIMIT, d.broker || '']
                 );
             }
             const billing = await pool.query('SELECT status FROM billing WHERE account_id = $1', [d.account]);
