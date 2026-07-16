@@ -51,6 +51,7 @@ async function sendAdminAlert(msg) {
 
 // ─── SHARED VALIDATION LOGIC (GAS-identical) ─────────────
 async function handleValidation(params) {
+    console.log('🔥 handleValidation called for account:', params.account);
     const { key, account, instance, balance, broker, hwid, personal_chat_id } = params;
     const licence = await pool.query(
         'SELECT * FROM licences WHERE licence_key = $1 AND status = $2',
