@@ -1065,6 +1065,22 @@ app.post('/', async (req, res) => {
         const type = d.type;
         const account = d.account || d.account_id || 'unknown';
 
+                // ─── 0. VALIDATE (FIX FOR 403 ERROR) ─────────────────────
+        if (type === 'validate') {
+            console.log('🔍 [POST /] Validating licence...');
+            const result = await handleValidation({
+                key: d.key || '',
+                account: d.account || '',
+                instance: d.instance || '',
+                balance: d.balance || '',
+                broker: d.broker || '',
+                hwid: d.hwid || '',
+                personal_chat_id: d.personal_chat_id || ''
+            });
+            console.log('📤 [POST /] Validation result:', result.status, result.body);
+            return res.status(result.status).send(result.body);
+        }
+
         const skipRateLimit = ['BILLING_SYNC', 'validate', 'OPEN_POSITIONS'];
         if (account !== 'unknown' && !skipRateLimit.includes(type) && isRateLimited(account, 3)) {
             console.warn('Rate limited:', account, type);
