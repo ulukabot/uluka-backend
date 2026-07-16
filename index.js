@@ -8,12 +8,6 @@ const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
 
-// Log every incoming request
-app.use((req, res, next) => {
-    console.log('📥 [REQUEST]', req.method, req.url, req.body);
-    next();
-});
-
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
 
 // ─── PostgreSQL Connection ────────────────────────────────
