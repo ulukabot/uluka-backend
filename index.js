@@ -17,12 +17,6 @@ app.use(cors({
     allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'x-admin-secret']
 }));
 
-// ─── Global error handler ──────────────────────────────────
-app.use((err, req, res, next) => {
-    console.error('🔥 Global error:', err.stack);
-    res.status(500).json({ error: err.message });
-});
-
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
