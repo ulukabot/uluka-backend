@@ -9,7 +9,7 @@ const app = express();
 app.use(express.json());
 
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
-console.log('PAYE ISSUE);
+console.log('PAYE ISSUE');
 
 // ─── PostgreSQL Connection ────────────────────────────────
 const pool = new Pool({
