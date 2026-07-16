@@ -72,6 +72,7 @@ async function handleValidation(params) {
     }
 
     const billing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [account]);
+    console.log('🔍 BILLING ROW FOUND:', JSON.stringify(billing.rows[0])); // temp
     if (billing.rows[0] && billing.rows[0].payee_25 >= billing.rows[0].payee_limit) {
         return { status: 403, body: 'LIMIT_BLOCK' };
     }
