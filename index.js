@@ -1,6 +1,6 @@
 // ============================================================
-// v2.2 – Dashboard API Endpoints Added
-// ULUKA ULTRA — Node.js Backend (Full GAS Replacement)
+// v2.4 – Full GAS Replacement + Key Generator + HWID Binding
+// ULUKA ULTRA — Complete Backend
 // ============================================================
 
 const express = require('express');
@@ -8,7 +8,8 @@ const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
 
-console.log('🚀 VERSION 2.2 WITH DASHBOARD ROUTES - DEPLOYED AT ' + new Date().toISOString());
+console.log('🚀 VERSION 2.4 WITH FULL GAS REPLACEMENT - DEPLOYED AT ' + new Date().toISOString());
+
 app.get('/ping', (req, res) => res.send('pong'));
 
 // ─── PostgreSQL Connection ────────────────────────────────
@@ -49,29 +50,60 @@ async function sendAdminAlert(msg) {
     if (ADMIN_CHAT_ID) await sendToTelegram(ADMIN_CHAT_ID, '🦉 ' + msg);
 }
 
-// ─── SHARED VALIDATION LOGIC ──────────────────────────────
+// ─── SHARED VALIDATION LOGIC (GAS-identical) ─────────────
 async function handleValidation(params) {
-    const { key, account, instance, balance, broker } = params;
+    const { key, account, instance, balance, broker, hwid, personal_chat_id } = params;
     const licence = await pool.query(
         'SELECT * FROM licences WHERE licence_key = $1 AND status = $2',
         [key, 'ACTIVE']
     );
     if (!licence.rows[0]) return { status: 401, body: 'NOT_FOUND' };
     const lic = licence.rows[0];
+
+    // ─── AUTO-BIND ACCOUNT ID (like GAS) ────────────────────
+    if (!lic.account_id && account) {
+        await pool.query(
+            'UPDATE licences SET account_id = $1 WHERE licence_key = $2',
+            [account, key]
+        );
+        console.log(`🔒 Auto-bound key ${key} to account ${account}`);
+    }
+
     if (lic.account_id && lic.account_id !== account) {
         return { status: 403, body: 'ACCOUNT_MISMATCH' };
     }
+
     const billing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [account]);
     if (billing.rows[0] && billing.rows[0].payee_25 >= billing.rows[0].payee_limit) {
         return { status: 403, body: 'LIMIT_BLOCK' };
     }
+
+    // ─── NEW ACTIVATION (HWID, Instance, Activations, Telegram) ──
     if (instance && !lic.instance_ids.includes(instance)) {
         await pool.query(
             'UPDATE licences SET instance_ids = array_append(instance_ids, $1), activations = activations + 1 WHERE licence_key = $2',
             [instance, key]
         );
+
+        // ─── Bind HWID (exactly like GAS) ────────────────────
+        if (hwid) {
+            await pool.query(
+                'UPDATE licences SET hwid = $1 WHERE licence_key = $2',
+                [hwid, key]
+            );
+        }
+
+        // ─── Bind Personal Chat ID (exactly like GAS) ────────
+        if (personal_chat_id) {
+            await pool.query(
+                'UPDATE licences SET telegram_id = $1 WHERE licence_key = $2',
+                [personal_chat_id, key]
+            );
+        }
+
         await sendAdminAlert(`🆕 NEW ACTIVATION\nClient: ${lic.client_name}\nAccount: ${account}\nKey: ${key}`);
     }
+
     if (balance && account) {
         const existing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [account]);
         if (existing.rows[0]) {
@@ -86,6 +118,7 @@ async function handleValidation(params) {
             );
         }
     }
+
     const d = String(new Date(lic.expires_on).getDate()).padStart(2, '0');
     const m = String(new Date(lic.expires_on).getMonth() + 1).padStart(2, '0');
     const y = new Date(lic.expires_on).getFullYear();
@@ -100,7 +133,6 @@ app.get('/', async (req, res) => {
         
         const type = req.query.type;
 
-        // If type is 'validate', handle licence validation
         if (type === 'validate') {
             console.log('🔍 Validating licence...');
             const result = await handleValidation({
@@ -108,13 +140,14 @@ app.get('/', async (req, res) => {
                 account: req.query.account || '',
                 instance: req.query.instance || '',
                 balance: req.query.balance || '',
-                broker: req.query.broker || ''
+                broker: req.query.broker || '',
+                hwid: req.query.hwid || '',
+                personal_chat_id: req.query.personal_chat_id || ''
             });
             console.log('📤 Validation result:', result.status, result.body);
             return res.status(result.status).send(result.body);
         }
         
-        // For any other request (including no type), return OK
         console.log('ℹ️ Returning OK (no validate)');
         return res.send('OK');
     } catch (err) {
@@ -124,23 +157,23 @@ app.get('/', async (req, res) => {
     }
 });
 
-// ─── ROUTE 2: POST /validate (for future compatibility) ────
+// ─── ROUTE 2: POST /validate ────────────────────────────────
 app.post('/validate', async (req, res) => {
     const result = await handleValidation(req.body);
     res.status(result.status).send(result.body);
 });
 
-// ─── ROUTE 3: POST /sync (for future compatibility) ──────
+// ─── ROUTE 3: POST /sync ────────────────────────────────────
 app.post('/sync', (req, res) => {
     res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 65, news_filter: 'ON' });
 });
 
-// ─── ROUTE 4: GET /sync (for browser testing) ────────────
+// ─── ROUTE 4: GET /sync ─────────────────────────────────────
 app.get('/sync', (req, res) => {
     res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 65 });
 });
 
-// ─── ROUTE 5: TRADE SIGNAL (POST) ─────────────────────────
+// ─── ROUTE 5: TRADE SIGNAL ──────────────────────────────────
 app.post('/hoot', async (req, res) => {
     try {
         const d = req.body;
@@ -180,7 +213,7 @@ app.post('/close', async (req, res) => {
     } catch(e) { res.status(500).send('ERROR'); }
 });
 
-// ─── ROUTE 7: BILLING SYNC ─────────────────────────────────
+// ─── ROUTE 7: BILLING SYNC ──────────────────────────────────
 app.post('/billing', async (req, res) => {
     try {
         const d = req.body;
@@ -203,7 +236,7 @@ app.post('/billing', async (req, res) => {
     } catch(e) { res.status(500).send('ERROR'); }
 });
 
-// ─── ROUTE 8: POSITIONS ─────────────────────────────────────
+// ─── ROUTE 8: POSITIONS ──────────────────────────────────────
 app.post('/positions', async (req, res) => {
     try {
         const d = req.body;
@@ -360,28 +393,22 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 app.get('/health', (req, res) => res.send('OK'));
 
 // ============================================================
-// 🆕 DASHBOARD API ENDPOINTS (added for Netlify dashboards)
+// 🆕 DASHBOARD API ENDPOINTS
 // ============================================================
 
 // ─── Public Stats ──────────────────────────────────────────
 app.get('/api/public/stats', async (req, res) => {
     try {
-        // Get active clients count
         const activeResult = await pool.query(
             "SELECT COUNT(*) AS activeClients FROM licences WHERE status = 'ACTIVE'"
         );
         const activeClients = parseInt(activeResult.rows[0]?.activeClients || 0);
 
-        // Total net profit (sum of net_profit from billing where status is ACTIVE or maybe all)
         const profitResult = await pool.query(
             "SELECT COALESCE(SUM(net_profit), 0) AS totalNetProfit FROM billing WHERE status = 'ACTIVE'"
         );
         const totalNetProfit = parseFloat(profitResult.rows[0]?.totalNetProfit || 0);
 
-        // Average win rate: compute from trade_log for all accounts? We'll need to aggregate.
-        // Simpler: average win_rate from licences? We don't have win_rate there. We'll compute from trade_log.
-        // For now, we'll return 0 and let the frontend compute if needed.
-        // Actually we can compute from trade_log by counting wins/losses.
         const winRateResult = await pool.query(`
             SELECT COALESCE(
                 (SELECT COUNT(*) FROM trade_log WHERE pnl > 0) * 100.0 / 
@@ -391,7 +418,6 @@ app.get('/api/public/stats', async (req, res) => {
         `);
         const avgWinRate = parseFloat(winRateResult.rows[0]?.avgWinRate || 0);
 
-        // Open positions count (sum from open_positions)
         const openPosResult = await pool.query(
             "SELECT COUNT(*) AS openPositions FROM open_positions"
         );
@@ -409,14 +435,13 @@ app.get('/api/public/stats', async (req, res) => {
     }
 });
 
-// ─── Admin Clients List (protected) ────────────────────────
+// ─── Admin Clients List ────────────────────────────────────
 app.get('/api/admin/clients', async (req, res) => {
     const secret = req.headers['x-admin-secret'];
     if (secret !== ADMIN_SECRET) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-        // Join licences with billing to get full client data
         const query = `
             SELECT 
                 l.client_name AS name,
@@ -428,17 +453,13 @@ app.get('/api/admin/clients', async (req, res) => {
                 b.net_profit AS profit,
                 b.payee_25,
                 b.dd_percent AS dd,
-                -- compute health score from dd_percent (100 - dd*10, capped)
                 GREATEST(0, 100 - COALESCE(CAST(REPLACE(b.dd_percent, '%', '') AS NUMERIC), 0) * 10) AS health,
-                -- need to compute win_rate from trade_log for this account
                 COALESCE(
                     (SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id AND pnl > 0) * 100.0 /
                     NULLIF((SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id), 0),
                     0
                 ) AS win_rate,
-                -- trades this week (last 7 days)
                 (SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id AND time > NOW() - INTERVAL '7 days') AS trades_this_week,
-                -- open positions count
                 (SELECT COUNT(*) FROM open_positions WHERE account_id = l.account_id) AS open_positions
             FROM licences l
             LEFT JOIN billing b ON l.account_id = b.account_id
@@ -446,7 +467,6 @@ app.get('/api/admin/clients', async (req, res) => {
             ORDER BY l.client_name
         `;
         const result = await pool.query(query);
-        // Format dates
         const clients = result.rows.map(row => ({
             ...row,
             expiry: row.expiry ? row.expiry.toISOString().split('T')[0] : 'N/A',
@@ -485,7 +505,6 @@ app.get('/api/billing/:account', async (req, res) => {
             return res.status(404).json({ error: 'Account not found' });
         }
         const row = result.rows[0];
-        // Get total trades and win rate from trade_log
         const stats = await pool.query(
             `SELECT 
                 COUNT(*) AS total_trades,
@@ -504,11 +523,6 @@ app.get('/api/billing/:account', async (req, res) => {
         const losses = parseInt(s.losses || 0);
         const winRate = totalTrades > 0 ? (wins / totalTrades * 100) : 0;
 
-        // Compute max drawdown from trade_log (we'll need equity curve; for simplicity, use a placeholder)
-        // We'll compute from the trade_log by simulating equity.
-        // For now, we'll return a placeholder.
-        const maxDd = 0; // Could be computed later.
-
         res.json({
             current_balance: parseFloat(row.current_balance || 0),
             net_profit: parseFloat(row.net_profit || 0),
@@ -523,8 +537,7 @@ app.get('/api/billing/:account', async (req, res) => {
             total_pnl: parseFloat(s.total_pnl || 0),
             avg_pnl: parseFloat(s.avg_pnl || 0),
             max_win: parseFloat(s.max_win || 0),
-            max_loss: parseFloat(s.max_loss || 0),
-            max_drawdown: maxDd
+            max_loss: parseFloat(s.max_loss || 0)
         });
     } catch (err) {
         console.error('🔥 /api/billing/:account error:', err.message);
@@ -579,7 +592,6 @@ app.get('/api/trades/:account', async (req, res) => {
             LIMIT $2`,
             [account, limit]
         );
-        // Format dates and numeric fields
         const trades = result.rows.map(row => ({
             time: row.time ? row.time.toISOString() : '',
             symbol: row.symbol,
@@ -599,11 +611,7 @@ app.get('/api/trades/:account', async (req, res) => {
     }
 });
 
-// ─── Override POST /validate to return JSON for client login ──
-// We'll keep the existing POST /validate but modify to return JSON when Accept header is application/json.
-// Or we can add a new route /api/login. Let's add a new one to avoid breaking existing.
-// We'll add /api/login that returns JSON.
-
+// ─── Client Login (JSON) ──────────────────────────────────
 app.post('/api/login', async (req, res) => {
     const { account, licence } = req.body;
     if (!account || !licence) {
@@ -642,10 +650,288 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// ─── ROUTE 16: POST / (Handles ALL EA background POSTs) ───
+// ============================================================
+// 🆕 KEY GENERATOR – ADMIN API + GUI
+// ============================================================
+
+// ─── ADMIN: Generate Key (API) ─────────────────────────────
+app.post('/api/admin/generate-key', async (req, res) => {
+    try {
+        const secret = req.headers['x-admin-secret'] || req.body.admin_secret;
+        if (secret !== ADMIN_SECRET) {
+            return res.status(401).json({ error: 'Unauthorized: Invalid admin secret' });
+        }
+
+        const {
+            client_name,
+            subscription = 'PRO',
+            expires_on,
+            equity_cap = 0,
+            status = 'ACTIVE',
+            duration = '1 Year',
+            account_id = null,
+            telegram_id = null,
+            email = null,
+            hwid = null
+        } = req.body;
+
+        if (!client_name) return res.status(400).json({ error: 'Missing client_name' });
+        if (!expires_on) return res.status(400).json({ error: 'Missing expires_on (YYYY-MM-DD)' });
+
+        let licence_key;
+        let keyExists = true;
+        let attempts = 0;
+        while (keyExists && attempts < 10) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let random = '';
+            for (let i = 0; i < 8; i++) random += chars.charAt(Math.floor(Math.random() * chars.length));
+            licence_key = `ULUKA-${random}`;
+            const check = await pool.query('SELECT licence_key FROM licences WHERE licence_key = $1', [licence_key]);
+            if (check.rows.length === 0) keyExists = false;
+            attempts++;
+        }
+        if (keyExists) return res.status(500).json({ error: 'Failed to generate unique key' });
+
+        const result = await pool.query(
+            `INSERT INTO licences (
+                licence_key, client_name, subscription, expires_on, equity_cap, status,
+                duration, account_id, telegram_id, email, hwid, creation_date, activations, blacklisted
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), 0, FALSE)
+            RETURNING *`,
+            [licence_key, client_name, subscription, expires_on, equity_cap, status,
+             duration, account_id, telegram_id, email, hwid]
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'Licence key generated!',
+            licence: result.rows[0]
+        });
+    } catch (error) {
+        console.error('🔥 Key gen error:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── ADMIN: Key Generator GUI ──────────────────────────────
+app.get('/admin/generate', (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Uluka Ultra – Key Generator</title>
+    <style>
+        body {
+            background: #060D1A;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: #0C1830;
+            border: 1px solid #1A304A;
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.8);
+        }
+        h1 {
+            color: #F0B429;
+            text-align: center;
+            letter-spacing: 2px;
+            font-size: 22px;
+            margin-top: 0;
+            margin-bottom: 30px;
+        }
+        label {
+            display: block;
+            margin-top: 16px;
+            font-size: 11px;
+            color: #8899BB;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: #060D1A;
+            border: 1px solid #1A304A;
+            border-radius: 6px;
+            color: #ffffff;
+            font-size: 14px;
+            box-sizing: border-box;
+            margin-top: 4px;
+        }
+        input:focus, select:focus {
+            border-color: #F0B429;
+            outline: none;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #F0B429;
+            border: none;
+            border-radius: 6px;
+            color: #060D1A;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 24px;
+            letter-spacing: 2px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #d19b1f;
+        }
+        #result {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 6px;
+            background: #060D1A;
+            border: 1px solid #1A304A;
+            word-break: break-all;
+            font-size: 14px;
+            display: none;
+        }
+        #result.success {
+            border-color: #00FF88;
+            display: block;
+        }
+        #result.error {
+            border-color: #FF5555;
+            display: block;
+        }
+        .key-highlight {
+            color: #F0B429;
+            font-weight: bold;
+            font-size: 18px;
+            background: #0C1830;
+            padding: 8px 12px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 10px;
+            color: #334466;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8899BB;
+            font-size: 12px;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🦉 ULUKA ULTRA</h1>
+    <div class="subtitle">One‑Click Key Generator</div>
+
+    <form id="keyForm">
+        <label>Client Name *</label>
+        <input type="text" id="client_name" placeholder="e.g. John Doe" required>
+
+        <label>Subscription</label>
+        <select id="subscription">
+            <option value="PRO">PRO</option>
+            <option value="PREMIUM">PREMIUM</option>
+            <option value="TRIAL">TRIAL</option>
+            <option value="PAYE">PAYE</option>
+        </select>
+
+        <label>Expiry Date *</label>
+        <input type="date" id="expires_on" required>
+
+        <label>Equity Cap ($)</label>
+        <input type="number" id="equity_cap" placeholder="0 (no cap)" value="0">
+
+        <label>Admin Secret *</label>
+        <input type="password" id="admin_secret" placeholder="Your ADMIN_SECRET from Railway" required>
+
+        <button type="submit">⚡ GENERATE KEY</button>
+    </form>
+
+    <div id="result"></div>
+    <div class="footer">Secured · Uluka Ultra v2.4</div>
+</div>
+
+<script>
+    document.getElementById('keyForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const client_name = document.getElementById('client_name').value.trim();
+        const subscription = document.getElementById('subscription').value;
+        const expires_on = document.getElementById('expires_on').value;
+        const equity_cap = parseFloat(document.getElementById('equity_cap').value) || 0;
+        const admin_secret = document.getElementById('admin_secret').value.trim();
+
+        const resultDiv = document.getElementById('result');
+        resultDiv.style.display = 'block';
+        resultDiv.className = '';
+        resultDiv.innerHTML = '⏳ Generating...';
+
+        if (!client_name || !expires_on || !admin_secret) {
+            resultDiv.className = 'error';
+            resultDiv.innerHTML = '❌ Please fill in all required fields (*).';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/generate-key', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-admin-secret': admin_secret
+                },
+                body: JSON.stringify({
+                    client_name,
+                    subscription,
+                    expires_on,
+                    equity_cap
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                resultDiv.className = 'success';
+                resultDiv.innerHTML = \`
+                    ✅ <b>Key Generated!</b><br><br>
+                    <span class="key-highlight">\${data.licence.licence_key}</span><br><br>
+                    <b>Client:</b> \${data.licence.client_name}<br>
+                    <b>Plan:</b> \${data.licence.subscription}<br>
+                    <b>Expires:</b> \${data.licence.expires_on}<br>
+                    <b>Cap:</b> $\${data.licence.equity_cap}
+                \`;
+            } else {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = \`❌ Error: \${data.error || 'Unknown error'}\`;
+            }
+        } catch (err) {
+            resultDiv.className = 'error';
+            resultDiv.innerHTML = \`❌ Network error: \${err.message}\`;
+        }
+    });
+</script>
+</body>
+</html>
+    `);
+});
+
+// ============================================================
+// ROUTE 16: POST / (Handles ALL EA background POSTs)
+// ============================================================
 app.post('/', async (req, res) => {
     try {
-        // ─── 🔍 DEBUG: Log every POST request ────────────────
         console.log('📥 [POST /] received');
         console.log('  Body:', req.body);
         console.log('  Type:', req.body?.type || 'undefined');
@@ -773,7 +1059,7 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
             }
         }
 
-        // ─── 7. TRADE_SIGNAL (Hoots) ──────────────────────────────
+        // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
         if (type === 'TRADE_SIGNAL') {
             try {
                 const premiumMsg = `
@@ -828,7 +1114,7 @@ TP1: ${d.tp1}
             }
         }
 
-        // ─── 10. DAILY_EOD (Master) ──────────────────────────────
+        // ─── 10. DAILY_EOD ─────────────────────────────────────────
         if (type === 'DAILY_EOD') {
             try {
                 const msg = `📊 DAILY EOD REPORT (Master)\nAccount: ${d.account_id || d.account}\nClient: ${d.client || 'Master'}\nTrades: ${d.trades}\nWins: ${d.wins}\nLosses: ${d.losses}\nWin Rate: ${d.win_rate}%\nRealized: $${d.realized}\nFloating: $${d.floating}\nTotal P&L: $${d.total_pnl}\nBalance: $${d.balance}\nEquity: $${d.equity}\nHealth: ${d.health}`;
@@ -840,7 +1126,7 @@ TP1: ${d.tp1}
             }
         }
 
-        // ─── 11. ClientEOD (Client) ──────────────────────────────
+        // ─── 11. ClientEOD ─────────────────────────────────────────
         if (type === 'ClientEOD') {
             try {
                 const msg = `🦉 YOUR DAILY REPORT\n${d.date || ''}\nP&L: $${d.total_pnl || 0}\nBalance: $${d.balance || 0}`;
