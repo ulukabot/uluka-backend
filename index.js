@@ -406,18 +406,12 @@ app.get('/health', (req, res) => res.send('OK'));
 
 app.get('/api/public/stats', async (req, res) => {
     try {
-        console.log('📊 /api/public/stats called');
-        
         const activeResult = await pool.query(
             "SELECT COUNT(*) AS activeclients FROM licences WHERE status = 'ACTIVE'"
         );
-        console.log('🔍 activeResult:', JSON.stringify(activeResult.rows));
-        
         const profitResult = await pool.query(
             "SELECT COALESCE(SUM(net_profit), 0) AS totalnetprofit FROM billing WHERE status = 'ACTIVE'"
         );
-        console.log('🔍 profitResult:', JSON.stringify(profitResult.rows));
-        
         const winRateResult = await pool.query(`
             SELECT COALESCE(
                 (SELECT COUNT(*) FROM trade_log WHERE CAST(pnl AS NUMERIC) > 0) * 100.0 / 
@@ -425,26 +419,19 @@ app.get('/api/public/stats', async (req, res) => {
                 0
             ) AS avgwinrate
         `);
-        console.log('🔍 winRateResult:', JSON.stringify(winRateResult.rows));
-        
         const openPosResult = await pool.query(
             "SELECT COUNT(*) AS openpositions FROM open_positions"
         );
-        console.log('🔍 openPosResult:', JSON.stringify(openPosResult.rows));
 
-        // 🔥 FIX: use lowercase keys from PostgreSQL
         const response = {
             activeClients: parseInt(activeResult.rows[0]?.activeclients || 0),
             totalNetProfit: parseFloat(profitResult.rows[0]?.totalnetprofit || 0),
             avgWinRate: parseFloat(winRateResult.rows[0]?.avgwinrate || 0),
             openPositions: parseInt(openPosResult.rows[0]?.openpositions || 0)
         };
-        
-        console.log('📤 Final response:', JSON.stringify(response));
         res.json(response);
     } catch (err) {
         console.error('🔥 /api/public/stats error:', err.message);
-        console.error(err.stack);
         res.status(500).json({ error: err.message });
     }
 });
