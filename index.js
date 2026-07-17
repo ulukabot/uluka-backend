@@ -406,38 +406,48 @@ app.get('/health', (req, res) => res.send('OK'));
 
 app.get('/api/public/stats', async (req, res) => {
     try {
+        console.log('📊 /api/public/stats called');
+        
+        // 1. Active clients
         const activeResult = await pool.query(
             "SELECT COUNT(*) AS activeClients FROM licences WHERE status = 'ACTIVE'"
         );
-        const activeClients = parseInt(activeResult.rows[0]?.activeClients || 0);
-
+        console.log('🔍 activeResult:', JSON.stringify(activeResult.rows));
+        
+        // 2. Total net profit
         const profitResult = await pool.query(
             "SELECT COALESCE(SUM(net_profit), 0) AS totalNetProfit FROM billing WHERE status = 'ACTIVE'"
         );
-        const totalNetProfit = parseFloat(profitResult.rows[0]?.totalNetProfit || 0);
-
+        console.log('🔍 profitResult:', JSON.stringify(profitResult.rows));
+        
+        // 3. Win rate
         const winRateResult = await pool.query(`
             SELECT COALESCE(
-                (SELECT COUNT(*) FROM trade_log WHERE pnl > 0) * 100.0 / 
+                (SELECT COUNT(*) FROM trade_log WHERE CAST(pnl AS NUMERIC) > 0) * 100.0 / 
                 NULLIF((SELECT COUNT(*) FROM trade_log), 0),
                 0
             ) AS avgWinRate
         `);
-        const avgWinRate = parseFloat(winRateResult.rows[0]?.avgWinRate || 0);
-
+        console.log('🔍 winRateResult:', JSON.stringify(winRateResult.rows));
+        
+        // 4. Open positions
         const openPosResult = await pool.query(
             "SELECT COUNT(*) AS openPositions FROM open_positions"
         );
-        const openPositions = parseInt(openPosResult.rows[0]?.openPositions || 0);
+        console.log('🔍 openPosResult:', JSON.stringify(openPosResult.rows));
 
-        res.json({
-            activeClients,
-            totalNetProfit,
-            avgWinRate,
-            openPositions
-        });
+        const response = {
+            activeClients: parseInt(activeResult.rows[0]?.activeClients || 0),
+            totalNetProfit: parseFloat(profitResult.rows[0]?.totalNetProfit || 0),
+            avgWinRate: parseFloat(winRateResult.rows[0]?.avgWinRate || 0),
+            openPositions: parseInt(openPosResult.rows[0]?.openPositions || 0)
+        };
+        
+        console.log('📤 Final response:', JSON.stringify(response));
+        res.json(response);
     } catch (err) {
         console.error('🔥 /api/public/stats error:', err.message);
+        console.error(err.stack);
         res.status(500).json({ error: err.message });
     }
 });
