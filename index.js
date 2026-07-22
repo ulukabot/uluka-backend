@@ -1216,7 +1216,14 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
         }
 
         // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
-        if (type === 'TRADE_SIGNAL') {
+       if (type === 'TRADE_SIGNAL') {
+    // ─── IGNORE CLIENT SOURCE (Stealth Mode) ───
+    if ((d.source || '').toUpperCase() === 'CLIENT') {
+        console.log('📥 Ignoring CLIENT TRADE_SIGNAL (stealth mode)');
+        return res.send('CLIENT_IGNORED');
+    }
+    // ─── ONLY MASTER HOOTS GO TO TELEGRAM ───
+    console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
             try {
                 const premiumMsg = `
 🦉 ULUKA PREMIUM HOOT
@@ -1247,7 +1254,12 @@ TP1: ${d.tp1}
         }
 
         // ─── 8. POSITION_UPDATE ──────────────────────────────────
-        if (type === 'POSITION_UPDATE') {
+       if (type === 'POSITION_UPDATE') {
+    // ─── IGNORE CLIENT POSITION UPDATES ───
+    if ((d.source || '').toUpperCase() === 'CLIENT') {
+        console.log('📥 Ignoring CLIENT POSITION_UPDATE (stealth mode)');
+        return res.send('CLIENT_IGNORED');
+    }
             try {
                 const msg = `⚖️ POSITION UPDATE\n${d.symbol} ${d.direction}\nNew SL: ${d.new_sl}\n${d.be_text || ''}`;
                 if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
