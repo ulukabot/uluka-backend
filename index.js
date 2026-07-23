@@ -185,6 +185,10 @@ app.get('/sync', (req, res) => {
 app.post('/hoot', async (req, res) => {
     try {
         const d = req.body;
+        if ((d.source || '').toUpperCase() === 'CLIENT') {
+            console.log('📥 Blocked CLIENT hoot attempt');
+            return res.send('CLIENT_BLOCKED');
+        }
         const premiumMsg = `
 🦉 ULUKA PREMIUM HOOT
 Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
@@ -214,6 +218,12 @@ TP1: ${d.tp1}
 app.post('/close', async (req, res) => {
     try {
         const d = req.body;
+
+          if ((d.source || '').toUpperCase() === 'CLIENT') {
+            console.log('📥 Blocked CLIENT close attempt');
+            return res.send('CLIENT_BLOCKED');
+        }
+        
         const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: ${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
         if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
         if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
@@ -331,6 +341,10 @@ app.post('/activation', async (req, res) => {
 app.post('/position_update', async (req, res) => {
     try {
         const d = req.body;
+         if ((d.source || '').toUpperCase() === 'CLIENT') {
+            console.log('📥 Blocked CLIENT close attempt');
+            return res.send('CLIENT_BLOCKED');
+        }
         if (PREMIUM_GROUP_ID) {
             await sendToTelegram(PREMIUM_GROUP_ID, `⚖️ POSITION UPDATE\n${d.symbol} ${d.direction}\nNew SL: ${d.new_sl}\n${d.be_text || ''}`);
         }
@@ -1203,6 +1217,10 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 
         // ─── 6. TRADE_CLOSE ─────────────────────────────────────
         if (type === 'TRADE_CLOSE') {
+            if ((d.source || '').toUpperCase() === 'CLIENT') {
+        console.log('📥 Blocked CLIENT TRADE_CLOSE');
+        return res.send('CLIENT_BLOCKED');
+    }
             console.log('✅ TRADE_CLOSE matched!');
             try {
                 const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: $${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
