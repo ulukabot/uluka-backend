@@ -1235,10 +1235,11 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 
         // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
        if (type === 'TRADE_SIGNAL') {
-    // ─── IGNORE CLIENT SOURCE (Stealth Mode) ───
-    if ((d.source || '').toUpperCase() === 'CLIENT') {
-        console.log('📥 Ignoring CLIENT TRADE_SIGNAL (stealth mode)');
-        return res.send('CLIENT_IGNORED');
+    // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
+    if ((d.source || '').toUpperCase() !== 'MASTER') {
+        console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
+        return res.send('NON_MASTER_BLOCKED');
+    }
     }
     // ─── ONLY MASTER HOOTS GO TO TELEGRAM ───
     console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
