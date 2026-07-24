@@ -185,10 +185,10 @@ app.get('/sync', (req, res) => {
 app.post('/hoot', async (req, res) => {
     try {
         const d = req.body;
-        if ((d.source || '').toUpperCase() === 'CLIENT') {
-            console.log('📥 Blocked CLIENT hoot attempt');
-            return res.send('CLIENT_BLOCKED');
-        }
+        if ((d.source || '').toUpperCase() !== 'MASTER') {
+    console.log('📥 Blocked non-MASTER hoot attempt:', d.source);
+    return res.send('NON_MASTER_BLOCKED');
+}
         const premiumMsg = `
 🦉 ULUKA PREMIUM HOOT
 Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
@@ -219,10 +219,10 @@ app.post('/close', async (req, res) => {
     try {
         const d = req.body;
 
-          if ((d.source || '').toUpperCase() === 'CLIENT') {
-            console.log('📥 Blocked CLIENT close attempt');
-            return res.send('CLIENT_BLOCKED');
-        }
+          if ((d.source || '').toUpperCase() !== 'MASTER') {
+    console.log('📥 Blocked non-MASTER close attempt:', d.source);
+    return res.send('NON_MASTER_BLOCKED');
+}
         
         const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: ${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
         if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
@@ -341,10 +341,10 @@ app.post('/activation', async (req, res) => {
 app.post('/position_update', async (req, res) => {
     try {
         const d = req.body;
-         if ((d.source || '').toUpperCase() === 'CLIENT') {
-            console.log('📥 Blocked CLIENT close attempt');
-            return res.send('CLIENT_BLOCKED');
-        }
+         if ((d.source || '').toUpperCase() !== 'MASTER') {
+    console.log('📥 Blocked non-MASTER position update:', d.source);
+    return res.send('NON_MASTER_BLOCKED');
+}
         if (PREMIUM_GROUP_ID) {
             await sendToTelegram(PREMIUM_GROUP_ID, `⚖️ POSITION UPDATE\n${d.symbol} ${d.direction}\nNew SL: ${d.new_sl}\n${d.be_text || ''}`);
         }
@@ -1217,9 +1217,10 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
 
         // ─── 6. TRADE_CLOSE ─────────────────────────────────────
         if (type === 'TRADE_CLOSE') {
-            if ((d.source || '').toUpperCase() === 'CLIENT') {
-        console.log('📥 Blocked CLIENT TRADE_CLOSE');
-        return res.send('CLIENT_BLOCKED');
+    // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
+    if ((d.source || '').toUpperCase() !== 'MASTER') {
+        console.log('📥 Blocked non-MASTER TRADE_CLOSE:', d.source);
+        return res.send('NON_MASTER_BLOCKED');
     }
             console.log('✅ TRADE_CLOSE matched!');
             try {
@@ -1273,11 +1274,11 @@ TP1: ${d.tp1}
         }
 
         // ─── 8. POSITION_UPDATE ──────────────────────────────────
-       if (type === 'POSITION_UPDATE') {
-    // ─── IGNORE CLIENT POSITION UPDATES ───
-    if ((d.source || '').toUpperCase() === 'CLIENT') {
-        console.log('📥 Ignoring CLIENT POSITION_UPDATE (stealth mode)');
-        return res.send('CLIENT_IGNORED');
+       iif (type === 'POSITION_UPDATE') {
+    // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
+    if ((d.source || '').toUpperCase() !== 'MASTER') {
+        console.log('📥 Blocked non-MASTER POSITION_UPDATE:', d.source);
+        return res.send('NON_MASTER_BLOCKED');
     }
             try {
                 const msg = `⚖️ POSITION UPDATE\n${d.symbol} ${d.direction}\nNew SL: ${d.new_sl}\n${d.be_text || ''}`;
