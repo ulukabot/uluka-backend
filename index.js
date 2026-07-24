@@ -1241,7 +1241,6 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
         console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
         return res.send('NON_MASTER_BLOCKED');
     }
-    }
     // ─── ONLY MASTER HOOTS GO TO TELEGRAM ───
     console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
             try {
