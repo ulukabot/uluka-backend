@@ -1273,7 +1273,7 @@ TP1: ${d.tp1}
         }
 
         // ─── 8. POSITION_UPDATE ──────────────────────────────────
-       iif (type === 'POSITION_UPDATE') {
+       if (type === 'POSITION_UPDATE') {
     // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
     if ((d.source || '').toUpperCase() !== 'MASTER') {
         console.log('📥 Blocked non-MASTER POSITION_UPDATE:', d.source);
