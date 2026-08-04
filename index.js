@@ -186,9 +186,14 @@ app.post('/hoot', async (req, res) => {
     try {
         const d = req.body;
         if ((d.source || '').toUpperCase() !== 'MASTER') {
-    console.log('📥 Blocked non-MASTER hoot attempt:', d.source);
-    return res.send('NON_MASTER_BLOCKED');
-}
+            console.log('📥 Blocked non-MASTER hoot attempt:', d.source);
+            return res.send('NON_MASTER_BLOCKED');
+        }
+
+        // 🆕 UPDATED: Support both 'riskPercent' and legacy 'lot'
+        const riskDisplay = d.riskPercent !== undefined ? `${d.riskPercent}%` : (d.lot !== undefined ? `${d.lot}` : 'N/A');
+        const riskLabel = d.riskPercent !== undefined ? 'Risk (Account %)' : 'Lot';
+
         const premiumMsg = `
 🦉 ULUKA PREMIUM HOOT
 Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
@@ -199,7 +204,7 @@ SL: ${d.sl}
 TP1: ${d.tp1} RR 1:${d.rr1}
 TP2: ${d.tp2} RR 1:${d.rr2}
 TP3: ${d.tp3} RR 1:${d.rr3}
-Lot: ${d.lot}
+${riskLabel}: ${riskDisplay}
 Ticket: ${d.ticket}
         `;
         const freeMsg = `
@@ -211,7 +216,10 @@ TP1: ${d.tp1}
         if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
         if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
         res.send('HOOT_SENT');
-    } catch(e) { res.status(500).send('ERROR'); }
+    } catch(e) { 
+        console.error('🔥 /hoot error:', e.message);
+        res.status(500).send('ERROR'); 
+    }
 });
 
 // ─── ROUTE 6: TRADE CLOSE ──────────────────────────────────
