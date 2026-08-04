@@ -1234,16 +1234,20 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
             }
         }
 
-        // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
-       if (type === 'TRADE_SIGNAL') {
-    // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
-    if ((d.source || '').toUpperCase() !== 'MASTER') {
-        console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
-        return res.send('NON_MASTER_BLOCKED');
-    }
-    // ─── ONLY MASTER HOOTS GO TO TELEGRAM ───
-    console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
+                // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
+        if (type === 'TRADE_SIGNAL') {
+            // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
+            if ((d.source || '').toUpperCase() !== 'MASTER') {
+                console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
+                return res.send('NON_MASTER_BLOCKED');
+            }
+            // ─── ONLY MASTER HOOTS GO TO TELEGRAM ───
+            console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
             try {
+                // 🆕 UPDATED: Support both 'riskPercent' and legacy 'lot'
+                const riskDisplay = d.riskPercent !== undefined ? `${d.riskPercent}%` : (d.lot !== undefined ? `${d.lot}` : 'N/A');
+                const riskLabel = d.riskPercent !== undefined ? 'Risk (Account %)' : 'Lot';
+
                 const premiumMsg = `
 🦉 ULUKA PREMIUM HOOT
 Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
@@ -1254,7 +1258,7 @@ SL: ${d.sl}
 TP1: ${d.tp1} RR 1:${d.rr1}
 TP2: ${d.tp2} RR 1:${d.rr2}
 TP3: ${d.tp3} RR 1:${d.rr3}
-Lot: ${d.lot}
+${riskLabel}: ${riskDisplay}
 Ticket: ${d.ticket}
                 `;
                 const freeMsg = `
