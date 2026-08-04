@@ -132,7 +132,35 @@ async function handleValidation(params) {
     const y = new Date(lic.expires_on).getFullYear();
     return { status: 200, body: `AUTHORIZED|${d}-${m}-${y}|${lic.client_name}|${lic.equity_cap || 0}|${lic.subscription || 'PRO'}` };
 }
+// ─── SHARED HOOT FORMATTER ────────────────────────────────
+function buildHootMessages(d) {
+    const lotDisplay = d.lot !== undefined ? d.lot : 'N/A';
+    const riskDisplay = d.riskPercent !== undefined ? `${d.riskPercent}%` : 'N/A';
 
+    const premiumMsg = `
+🦉 ULUKA PREMIUM HOOT
+Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
+Symbol: ${d.symbol}
+Strategy: ${d.strategy}
+Entry: ${d.entry}
+SL: ${d.sl}
+TP1: ${d.tp1} RR 1:${d.rr1}
+TP2: ${d.tp2} RR 1:${d.rr2}
+TP3: ${d.tp3} RR 1:${d.rr3}
+Lot: ${lotDisplay}
+Risk (Account %): ${riskDisplay}
+Ticket: ${d.ticket}
+    `;
+
+    const freeMsg = `
+🦉 FREE HOOT
+${d.action} on ${d.symbol}
+TP1: ${d.tp1}
+💎 Join Premium for full levels
+    `;
+
+    return { premiumMsg, freeMsg };
+}
 // ─── ROUTE 1: LEGACY GET ────────────────────────────────────
 app.get('/', async (req, res) => {
     try {
@@ -190,30 +218,9 @@ app.post('/hoot', async (req, res) => {
             return res.send('NON_MASTER_BLOCKED');
         }
 
-        // Display both fields safely
-        const lotDisplay = d.lot !== undefined ? d.lot : 'N/A';
-        const riskDisplay = d.riskPercent !== undefined ? `${d.riskPercent}%` : 'N/A';
+        // ── Use the shared formatter ──
+        const { premiumMsg, freeMsg } = buildHootMessages(d);
 
-        const premiumMsg = `
-🦉 ULUKA PREMIUM HOOT
-Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
-Symbol: ${d.symbol}
-Strategy: ${d.strategy}
-Entry: ${d.entry}
-SL: ${d.sl}
-TP1: ${d.tp1} RR 1:${d.rr1}
-TP2: ${d.tp2} RR 1:${d.rr2}
-TP3: ${d.tp3} RR 1:${d.rr3}
-Lot: ${lotDisplay}
-Risk (Account %): ${riskDisplay}
-Ticket: ${d.ticket}
-        `;
-        const freeMsg = `
-🦉 FREE HOOT
-${d.action} on ${d.symbol}
-TP1: ${d.tp1}
-💎 Join Premium for full levels
-        `;
         if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
         if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
         res.send('HOOT_SENT');
@@ -240,28 +247,25 @@ app.post('/close', async (req, res) => {
     } catch(e) { res.status(500).send('ERROR'); }
 });
 
-// ─── ROUTE 7: BILLING SYNC ──────────────────────────────────
-app.post('/billing', async (req, res) => {
-    try {
-        const d = req.body;
-        if (!d.account) return res.status(400).send('MISSING_ACCOUNT');
-        const existing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [d.account]);
-        if (existing.rows[0]) {
-            await pool.query(
-                `UPDATE billing SET current_balance = $1, net_profit = $2, payee_25 = $3, last_sync = NOW() WHERE account_id = $4`,
-                [parseFloat(d.balance || 0), parseFloat(d.balance || 0) - existing.rows[0].start_balance, Math.max(0, (parseFloat(d.balance || 0) - existing.rows[0].start_balance) * 0.25), d.account]
-            );
-        } else {
-            await pool.query(
-                `INSERT INTO billing (account_id, client_name, start_balance, current_balance, net_profit, payee_25, status, initial_equity, dd_percent, payee_limit, last_sync, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
-                [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), '0.00%', DEFAULT_PAYEE_LIMIT, d.broker || '']
-            );
+        // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
+        if (type === 'TRADE_SIGNAL') {
+            if ((d.source || '').toUpperCase() !== 'MASTER') {
+                console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
+                return res.send('NON_MASTER_BLOCKED');
+            }
+            console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
+            try {
+                // ── Use the shared formatter ──
+                const { premiumMsg, freeMsg } = buildHootMessages(d);
+
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
+                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
+                return res.send('HOOT_SENT');
+            } catch(e) {
+                console.error('🔥 TRADE_SIGNAL error:', e.message);
+                return res.status(500).send('ERROR');
+            }
         }
-        const billing = await pool.query('SELECT status FROM billing WHERE account_id = $1', [d.account]);
-        if (billing.rows[0] && billing.rows[0].status === 'PAUSED') return res.send('PAUSED');
-        res.send('SUCCESS');
-    } catch(e) { res.status(500).send('ERROR'); }
-});
 
 // ─── ROUTE 8: POSITIONS ──────────────────────────────────────
 app.post('/positions', async (req, res) => {
