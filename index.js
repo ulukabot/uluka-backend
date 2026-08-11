@@ -220,6 +220,96 @@ app.get('/api/trades/:account', async (req, res) => { /* unchanged */ });
 app.post('/api/login', async (req, res) => { /* unchanged */ });
 
 // ============================================================
+// 🆕 PUBLIC DASHBOARD ENDPOINTS (Equity + Trades)
+// ============================================================
+
+// ─── 1. Equity Curve ────────────────────────────────────────
+app.get('/api/public/equity', async (req, res) => {
+    try {
+        // Get the starting equity from the first billing entry or use a fixed base
+        const baseQuery = `SELECT COALESCE(SUM(initial_equity), 5000) as base FROM billing WHERE status = 'ACTIVE'`;
+        const baseResult = await pool.query(baseQuery);
+        const baseEquity = parseFloat(baseResult.rows[0]?.base || 5000);
+
+        // Get daily cumulative P&L from trades across all accounts
+        const query = `
+            WITH daily_pnl AS (
+                SELECT 
+                    DATE_TRUNC('day', close_time) as date,
+                    SUM(profit) as daily_profit
+                FROM trades
+                WHERE close_time IS NOT NULL
+                GROUP BY DATE_TRUNC('day', close_time)
+                ORDER BY DATE_TRUNC('day', close_time)
+            ),
+            cumulative AS (
+                SELECT 
+                    date,
+                    daily_profit,
+                    SUM(daily_profit) OVER (ORDER BY date) as cumulative_pnl
+                FROM daily_pnl
+            )
+            SELECT 
+                date::date as date,
+                ROUND((${baseEquity} + cumulative_pnl)::numeric, 2) as equity
+            FROM cumulative
+            ORDER BY date
+        `;
+
+        const result = await pool.query(query);
+        
+        // If no data, return a single point with base equity
+        if (result.rows.length === 0) {
+            return res.json([{ date: new Date().toISOString().split('T')[0], equity: baseEquity }]);
+        }
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error('❌ Equity endpoint error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── 2. Recent Trades ────────────────────────────────────────
+app.get('/api/public/trades', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+        
+        const query = `
+            SELECT 
+                symbol,
+                CASE 
+                    WHEN action IN ('BUY', 'buy') THEN 'BUY' 
+                    WHEN action IN ('SELL', 'sell') THEN 'SELL' 
+                    ELSE 'UNKNOWN' 
+                END as type,
+                entry_price as entry,
+                sl,
+                tp,
+                profit,
+                strategy_name as strategy,
+                close_time as time
+            FROM trades
+            WHERE close_time IS NOT NULL
+            ORDER BY close_time DESC
+            LIMIT $1
+        `;
+        
+        const result = await pool.query(query, [limit]);
+        
+        // If no trades, return empty array
+        if (result.rows.length === 0) {
+            return res.json([]);
+        }
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error('❌ Trades endpoint error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ============================================================
 // KEY GENERATOR (admin/generate) – already added
 // ============================================================
 
