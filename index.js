@@ -1472,6 +1472,31 @@ TP1: ${d.tp1}
 
 console.log('✅ ROUTE 16 (POST /) registered');
 
+// ============================================================
+// 🆕 SPECIFIC ACCOUNT EQUITY ENDPOINT
+// ============================================================
+app.get('/api/equity/:account', async (req, res) => {
+    const account = req.params.account;
+    try {
+        const result = await pool.query(
+            `SELECT current_balance FROM billing WHERE account_id = $1`,
+            [account]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+        const currentBalance = parseFloat(result.rows[0].current_balance || 0);
+        res.json({
+            account: account,
+            balance: currentBalance,
+            equity: currentBalance
+        });
+    } catch (err) {
+        console.error('🔥 /api/equity/:account error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
