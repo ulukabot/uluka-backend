@@ -247,26 +247,7 @@ app.post('/close', async (req, res) => {
     } catch(e) { res.status(500).send('ERROR'); }
 });
 
-        // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
-        if (type === 'TRADE_SIGNAL') {
-            if ((d.source || '').toUpperCase() !== 'MASTER') {
-                console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
-                return res.send('NON_MASTER_BLOCKED');
-            }
-            console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
-            try {
-                // ── Use the shared formatter ──
-                const { premiumMsg, freeMsg } = buildHootMessages(d);
-
-                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
-                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
-                return res.send('HOOT_SENT');
-            } catch(e) {
-                console.error('🔥 TRADE_SIGNAL error:', e.message);
-                return res.status(500).send('ERROR');
-            }
-        }
-
+       
 // ─── ROUTE 8: POSITIONS ──────────────────────────────────────
 app.post('/positions', async (req, res) => {
     try {
