@@ -672,7 +672,113 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ ok: false, error: err.message });
     }
 });
+// ============================================================
+// 🆕 PUBLIC DASHBOARD ENDPOINTS (for public.html)
+// ============================================================
 
+// ─── 1. Equity Curve (aggregated across all clients) ──────
+app.get('/api/public/equity', async (req, res) => {
+    try {
+        // Get total starting equity from all active clients
+        const baseQuery = `
+            SELECT COALESCE(SUM(initial_equity), 0) AS total_start
+            FROM billing 
+            WHERE status = 'ACTIVE'
+        `;
+        const baseResult = await pool.query(baseQuery);
+        const baseEquity = parseFloat(baseResult.rows[0]?.total_start || 0);
+
+        // If no base equity, use a default of $5,000
+        const startEquity = baseEquity > 0 ? baseEquity : 5000;
+
+        // Get daily cumulative P&L from trade_log
+        const query = `
+            WITH daily_pnl AS (
+                SELECT 
+                    DATE(time) AS date,
+                    COALESCE(SUM(CAST(pnl AS NUMERIC)), 0) AS daily_profit
+                FROM trade_log
+                WHERE time IS NOT NULL
+                GROUP BY DATE(time)
+                ORDER BY DATE(time)
+            ),
+            cumulative AS (
+                SELECT 
+                    date,
+                    daily_profit,
+                    SUM(daily_profit) OVER (ORDER BY date) AS cumulative_pnl
+                FROM daily_pnl
+            )
+            SELECT 
+                date,
+                ROUND((${startEquity} + cumulative_pnl)::NUMERIC, 2) AS equity
+            FROM cumulative
+            ORDER BY date
+        `;
+
+        const result = await pool.query(query);
+
+        // If no data, return a single point with the starting equity
+        if (result.rows.length === 0) {
+            return res.json([{ 
+                date: new Date().toISOString().split('T')[0], 
+                equity: startEquity 
+            }]);
+        }
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error('❌ /api/public/equity error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── 2. Recent Trades (across all clients) ─────────────────
+app.get('/api/public/trades', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+
+        const query = `
+            SELECT 
+                symbol,
+                action AS type,
+                price AS entry,
+                CAST(NULL AS TEXT) AS sl,
+                CAST(NULL AS TEXT) AS tp,
+                CAST(pnl AS NUMERIC) AS profit,
+                strategy,
+                time
+            FROM trade_log
+            WHERE pnl IS NOT NULL
+            ORDER BY time DESC
+            LIMIT $1
+        `;
+
+        const result = await pool.query(query, [limit]);
+
+        // If no trades, return empty array
+        if (result.rows.length === 0) {
+            return res.json([]);
+        }
+
+        // Format the response
+        const trades = result.rows.map(row => ({
+            symbol: row.symbol || '—',
+            type: row.type || '—',
+            entry: row.entry ? parseFloat(row.entry).toFixed(2) : '—',
+            sl: row.sl || '—',
+            tp: row.tp || '—',
+            profit: parseFloat(row.profit || 0),
+            strategy: row.strategy || '—',
+            time: row.time ? row.time.toISOString() : ''
+        }));
+
+        res.json(trades);
+    } catch (err) {
+        console.error('❌ /api/public/trades error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
 // ============================================================
 // KEY GENERATOR – ADMIN API + GUI
 // ============================================================
