@@ -363,15 +363,16 @@ app.post('/ai_decision', async (req, res) => {
         const context = req.body;
         const prompt = `
 Trade: ${context.symbol} ${context.action}.
+Strategy: ${context.strategy || 'Unknown'}.
 Confidence: ${context.confidence || 50}.
 HTF bias: ${context.htf_bias || 'NEUTRAL'}.
 Session: ${context.session || 'London'}.
 Daily P&L: ${context.daily_pnl || 0}.
 Health: ${context.health || 50}.
-Last trades: ${JSON.stringify(context.last_trades || [])}.
+Market Context: ATR ratio is ${context.atr_ratio || 1.0}, Bollinger Width is ${context.bb_width || 0}, ADX Strength is ${context.adx_strength || 20}.
 Decision: TAKE only if all conditions strong. Default SKIP if uncertain.
-Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_multiplier":1.0,"reason":"brief","news_sentiment":"NEUTRAL","news_summary":"","cot_sentiment":"NEUTRAL"}
-        `;
+Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_multiplier":1.0,"reason":"brief"}
+`;
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
