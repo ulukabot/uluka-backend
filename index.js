@@ -210,7 +210,8 @@ app.get('/sync', (req, res) => {
         kill_switch: 'OFF', 
         multiplier: 1.0, 
         min_confidence: 65,
-        news_block: newsBlocked ? 'ON' : 'OFF'  // <--- ADD THIS LINE
+        high_news_block: highImpactUSDBlock ? 'ON' : 'OFF',  // Separate flags
+        medium_news_block: mediumImpactUSDBlock ? 'ON' : 'OFF'
     });
 });
 
@@ -1485,58 +1486,65 @@ app.get('/api/equity/:account', async (req, res) => {
 });
 
 // ─── BACKGROUND NEWS CACHING (Phase 1 - Test Mode) ───────────────
-let newsBlocked = false;
+// ─── BACKGROUND NEWS CACHING (Neutral data source) ──────────────
+let highImpactUSDBlock = false; // Separate flag for High
+let mediumImpactUSDBlock = false; // Separate flag for Medium
 let lastNewsCheck = 0;
 
 async function updateNewsCache() {
     try {
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const today = new Date().toISOString().split('T')[0];
         const response = await fetch(`https://economic-calendar.xyz/api/events?date=${today}`);
         const data = await response.json();
 
-        newsBlocked = false; // Default to OFF (Safe)
+        // Default to OFF
+        highImpactUSDBlock = false;
+        mediumImpactUSDBlock = false;
         const now = Date.now();
 
         for (const event of data) {
-            // Only block High Impact USD events
-            if (event.currency === 'USD' && event.impact === 'High') {
-                const eventTime = new Date(event.time).getTime();
-                // Block if the event is within the next 30 minutes
-                if (eventTime > now && (eventTime - now) < 1800000) {
-                    newsBlocked = true;
-                    console.log(`📰 REAL USD NEWS DETECTED: ${event.title} at ${event.time}. Blocking trades for 30 mins.`);
-                    break;
+            const eventTime = new Date(event.time).getTime();
+            // Check if event is within the next 30 minutes
+            if (eventTime > now && (eventTime - now) < 1800000) {
+                
+                // 🔥 We do NOT filter by currency here. We pass all data.
+                // The EA will decide based on the currency of the chart it's on!
+                
+                if (event.impact === 'High') {
+                    highImpactUSDBlock = true;
+                    console.log(`📰 HIGH EVENT CACHED: ${event.title} at ${event.time}`);
+                } else if (event.impact === 'Medium') {
+                    mediumImpactUSDBlock = true;
+                    console.log(`📰 MEDIUM EVENT CACHED: ${event.title} at ${event.time}`);
                 }
             }
         }
         lastNewsCheck = Date.now();
     } catch (err) {
-        console.error('News API silent fallback (no trades blocked):', err.message);
-        newsBlocked = false; // If API fails, we let the EA keep trading safely.
+        console.error('News API silent fallback:', err.message);
+        highImpactUSDBlock = false;
+        mediumImpactUSDBlock = false;
         lastNewsCheck = Date.now();
     }
 }
 
 // ─── MANUAL TEST ENDPOINT (To verify the data source) ─────────────
 app.get('/api/test-news', async (req, res) => {
-    // Force a fresh fetch so you see live, real-time data.
-    await updateNewsCache();
+    await updateNewsCache(); // Force fresh fetch
 
     res.json({
         status: 'SUCCESS',
         current_server_time: new Date().toISOString(),
-        news_blocked: newsBlocked,
+        high_news_blocked: highImpactUSDBlock,
+        medium_news_blocked: mediumImpactUSDBlock,
         last_cache_update: new Date(lastNewsCheck).toISOString(),
-        message: newsBlocked ? '🚨 BLOCKING: High impact USD news detected within 30 mins.' 
-                             : '✅ SAFE: No high impact USD news in the next 30 mins.'
+        message: `High: ${highImpactUSDBlock ? 'ON' : 'OFF'} | Medium: ${mediumImpactUSDBlock ? 'ON' : 'OFF'}`
     });
 });
 
-// ─── START THE 1-HOUR BACKGROUND LOOP ─────────────────────────────
-// Run once on startup
+// Run on startup and every 60 minutes
 updateNewsCache(); 
-// Then run every 60 minutes
-setInterval(updateNewsCache, 60 * 60 * 1000); 
+setInterval(updateNewsCache, 60 * 60 * 1000);
 
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
