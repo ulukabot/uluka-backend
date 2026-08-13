@@ -206,7 +206,12 @@ app.post('/sync', (req, res) => {
 
 // ─── ROUTE 4: GET /sync ─────────────────────────────────────
 app.get('/sync', (req, res) => {
-    res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 65 });
+    res.json({ 
+        kill_switch: 'OFF', 
+        multiplier: 1.0, 
+        min_confidence: 65,
+        news_block: newsBlocked ? 'ON' : 'OFF'  // <--- ADD THIS LINE
+    });
 });
 
 // ─── ROUTE 5: TRADE SIGNAL ──────────────────────────────────
@@ -1478,6 +1483,60 @@ app.get('/api/equity/:account', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ─── BACKGROUND NEWS CACHING (Phase 1 - Test Mode) ───────────────
+let newsBlocked = false;
+let lastNewsCheck = 0;
+
+async function updateNewsCache() {
+    try {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const response = await fetch(`https://economic-calendar.xyz/api/events?date=${today}`);
+        const data = await response.json();
+
+        newsBlocked = false; // Default to OFF (Safe)
+        const now = Date.now();
+
+        for (const event of data) {
+            // Only block High Impact USD events
+            if (event.currency === 'USD' && event.impact === 'High') {
+                const eventTime = new Date(event.time).getTime();
+                // Block if the event is within the next 30 minutes
+                if (eventTime > now && (eventTime - now) < 1800000) {
+                    newsBlocked = true;
+                    console.log(`📰 REAL USD NEWS DETECTED: ${event.title} at ${event.time}. Blocking trades for 30 mins.`);
+                    break;
+                }
+            }
+        }
+        lastNewsCheck = Date.now();
+    } catch (err) {
+        console.error('News API silent fallback (no trades blocked):', err.message);
+        newsBlocked = false; // If API fails, we let the EA keep trading safely.
+        lastNewsCheck = Date.now();
+    }
+}
+
+// ─── MANUAL TEST ENDPOINT (To verify the data source) ─────────────
+app.get('/api/test-news', async (req, res) => {
+    // Force a fresh fetch so you see live, real-time data.
+    await updateNewsCache();
+
+    res.json({
+        status: 'SUCCESS',
+        current_server_time: new Date().toISOString(),
+        news_blocked: newsBlocked,
+        last_cache_update: new Date(lastNewsCheck).toISOString(),
+        message: newsBlocked ? '🚨 BLOCKING: High impact USD news detected within 30 mins.' 
+                             : '✅ SAFE: No high impact USD news in the next 30 mins.'
+    });
+});
+
+// ─── START THE 1-HOUR BACKGROUND LOOP ─────────────────────────────
+// Run once on startup
+updateNewsCache(); 
+// Then run every 60 minutes
+setInterval(updateNewsCache, 60 * 60 * 1000); 
 
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
