@@ -1546,6 +1546,63 @@ app.get('/api/test-news', async (req, res) => {
 updateNewsCache(); 
 setInterval(updateNewsCache, 60 * 60 * 1000);
 
+// ─── AI EVALUATION DASHBOARD (Admin Only) ──────────────────
+app.get('/api/admin/ai-evaluation', async (req, res) => {
+    const secret = req.query.secret;
+    if (secret !== ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+        // Grab the last 100 trades where Shadow Mode was ON (logged but not blocked)
+        const query = `
+            SELECT ai_decision, pnl 
+            FROM trade_log 
+            WHERE shadow_mode = TRUE 
+            ORDER BY time DESC 
+            LIMIT 100
+        `;
+        const result = await pool.query(query);
+        const trades = result.rows;
+
+        if (trades.length === 0) {
+            return res.json({ message: "Not enough trades yet. Let the EA run in Shadow Mode for now." });
+        }
+
+        let takeCount = 0, skipCount = 0;
+        let takeWins = 0, skipWins = 0;
+
+        trades.forEach(t => {
+            const ai = (t.ai_decision || '').toUpperCase();
+            const pnl = parseFloat(t.pnl || 0);
+            const isWin = pnl > 0.01;
+
+            if (ai === 'TAKE') {
+                takeCount++;
+                if (isWin) takeWins++;
+            } else if (ai === 'SKIP') {
+                skipCount++;
+                if (isWin) skipWins++;
+            }
+        });
+
+        const takeWinRate = takeCount > 0 ? (takeWins / takeCount * 100) : 0;
+        const skipWinRate = skipCount > 0 ? (skipWins / skipCount * 100) : 0;
+
+        res.json({
+            total_evaluated: trades.length,
+            ai_takes: takeCount,
+            ai_skips: skipCount,
+            take_win_rate: parseFloat(takeWinRate.toFixed(1)),
+            skip_win_rate: parseFloat(skipWinRate.toFixed(1)),
+            recommendation: takeWinRate >= 60 ? "✅ Consider turning Shadow Mode OFF (Live Mode)." : "⏳ Keep Shadow Mode ON until win rate improves."
+        });
+
+    } catch (err) {
+        console.error('AI Eval error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
