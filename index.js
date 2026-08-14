@@ -10,6 +10,15 @@ app.use(express.json());
 
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
 
+// ─── JSON PARSE ERROR HANDLER ──────────────────────────────
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.warn('⚠️ Backend ignored a malformed JSON payload from the EA.');
+    return res.status(400).json({ error: 'Invalid JSON body' });
+  }
+  next();
+});
+
 // ─── CORS (manual – no external package) ──────────────────────
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
