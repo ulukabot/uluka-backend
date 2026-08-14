@@ -1498,7 +1498,6 @@ app.get('/api/equity/:account', async (req, res) => {
     }
 });
 
-// ─── BACKGROUND NEWS CACHING (Phase 1 - Test Mode) ───────────────
 // ─── BACKGROUND NEWS CACHING (Neutral data source) ──────────────
 let highImpactUSDBlock = false; // Separate flag for High
 let mediumImpactUSDBlock = false; // Separate flag for Medium
@@ -1507,37 +1506,70 @@ let lastNewsCheck = 0;
 async function updateNewsCache() {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const response = await fetch(`https://economic-calendar.xyz/api/events?date=${today}`);
-        const data = await response.json();
+        let data = null;
+        let sourceUsed = "";
+
+        // 🔥 TIER 1: n1try.com (Primary - Most Reliable)
+        try {
+            const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
+            const response = await fetch(url);
+            if(response.ok) {
+                data = await response.json();
+                sourceUsed = "n1try";
+            }
+        } catch (e) { /* Silently fall through to next source */ }
+
+        // 🔥 TIER 2: The old economic-calendar.xyz (Secondary Fallback)
+        if (!data) {
+            try {
+                const url = `https://economic-calendar.xyz/api/events?date=${today}`;
+                const response = await fetch(url);
+                if(response.ok) {
+                    data = await response.json();
+                    sourceUsed = "economic-calendar.xyz";
+                }
+            } catch (e) { /* Silently fall through */ }
+        }
 
         // Default to OFF
         highImpactUSDBlock = false;
         mediumImpactUSDBlock = false;
         const now = Date.now();
 
-        for (const event of data) {
-            const eventTime = new Date(event.time).getTime();
-            // Check if event is within the next 30 minutes
-            if (eventTime > now && (eventTime - now) < 1800000) {
+        // Parse data only if we actually got a valid response
+        if (data && Array.isArray(data)) {
+            for (const event of data) {
+                // Handle potential null/undefined time from API differences
+                if(!event.time) continue;
                 
-                // 🔥 We do NOT filter by currency here. We pass all data.
-                // The EA will decide based on the currency of the chart it's on!
-                
-                if (event.impact === 'High') {
-                    highImpactUSDBlock = true;
-                    console.log(`📰 HIGH EVENT CACHED: ${event.title} at ${event.time}`);
-                } else if (event.impact === 'Medium') {
-                    mediumImpactUSDBlock = true;
-                    console.log(`📰 MEDIUM EVENT CACHED: ${event.title} at ${event.time}`);
+                const eventTime = new Date(event.time).getTime();
+                // Check if event is within the next 30 minutes
+                if (eventTime > now && (eventTime - now) < 1800000) {
+                    
+                    if (event.impact === 'High') {
+                        highImpactUSDBlock = true;
+                        console.log(`📰 HIGH EVENT CACHED (${sourceUsed}): ${event.title} at ${event.time}`);
+                    } else if (event.impact === 'Medium') {
+                        mediumImpactUSDBlock = true;
+                        console.log(`📰 MEDIUM EVENT CACHED (${sourceUsed}): ${event.title} at ${event.time}`);
+                    }
                 }
             }
         }
         lastNewsCheck = Date.now();
+        
     } catch (err) {
-        console.error('News API silent fallback:', err.message);
+        // Ultimate last-resort fallback
         highImpactUSDBlock = false;
         mediumImpactUSDBlock = false;
         lastNewsCheck = Date.now();
+        
+        // Throttle the log to once every 6 hours if EVERYTHING fails
+        const now = Date.now();
+        if (!global.lastNewsErrorTime || (now - global.lastNewsErrorTime) > 21600000) {
+            console.warn('📰 ALL NEWS APIS UNREACHABLE. EA will trade through news safely.');
+            global.lastNewsErrorTime = now;
+        }
     }
 }
 
@@ -1545,16 +1577,30 @@ async function updateNewsCache() {
 app.get('/api/test-news', async (req, res) => {
     await updateNewsCache(); // Force fresh fetch
 
+    // Helper to format dates to GMT+5:30 (Indian Standard Time)
+    const formatIST = (dateObj) => {
+        return new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
+        }).format(dateObj);
+    };
+
+    const now = new Date();
+    const lastUpdate = new Date(lastNewsCheck);
+
     res.json({
         status: 'SUCCESS',
-        current_server_time: new Date().toISOString(),
+        current_server_time_utc: now.toISOString(),
+        current_server_time_ist: formatIST(now),
         high_news_blocked: highImpactUSDBlock,
         medium_news_blocked: mediumImpactUSDBlock,
-        last_cache_update: new Date(lastNewsCheck).toISOString(),
+        last_cache_update_utc: lastUpdate.toISOString(),
+        last_cache_update_ist: formatIST(lastUpdate),
         message: `High: ${highImpactUSDBlock ? 'ON' : 'OFF'} | Medium: ${mediumImpactUSDBlock ? 'ON' : 'OFF'}`
     });
 });
-
 // Run on startup and every 60 minutes
 updateNewsCache(); 
 setInterval(updateNewsCache, 60 * 60 * 1000);
