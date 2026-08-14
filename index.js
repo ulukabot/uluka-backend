@@ -1662,6 +1662,20 @@ app.get('/api/admin/ai-evaluation', async (req, res) => {
     }
 });
 
+// ─── MANUAL TEST ENDPOINT (To verify the data source) ─────────────
+app.get('/api/test-news', async (req, res) => {
+    await updateNewsCache(); // Force fresh fetch
+
+    res.json({
+        status: 'SUCCESS',
+        current_server_time: new Date().toISOString(),
+        high_news_blocked: highImpactUSDBlock,
+        medium_news_blocked: mediumImpactUSDBlock,
+        last_cache_update: new Date(lastNewsCheck).toISOString(),
+        message: `High: ${highImpactUSDBlock ? 'ON' : 'OFF'} | Medium: ${mediumImpactUSDBlock ? 'ON' : 'OFF'}`
+    });
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
