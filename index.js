@@ -375,9 +375,18 @@ HTF bias: ${context.htf_bias || 'NEUTRAL'}.
 Session: ${context.session || 'London'}.
 Daily P&L: ${context.daily_pnl || 0}.
 Health: ${context.health || 50}.
-Market Context: ATR ratio is ${context.atr_ratio || 1.0}, Bollinger Width is ${context.bb_width || 0}, ADX Strength is ${context.adx_strength || 20}.
-Decision: TAKE only if all conditions strong. Default SKIP if uncertain.
-Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_multiplier":1.0,"reason":"brief"}
+
+Market Metrics:
+- ATR ratio: ${context.atr_ratio || 1.0}
+- Bollinger Width: ${context.bb_width || 0}
+- ADX Strength: ${context.adx_strength || 20}
+
+Decision logic:
+TAKE if the session is reasonable, HTF bias supports the trade, and confidence is above 60%.
+SKIP only if multiple conditions strongly oppose the trade (e.g., dead session, extremely low ADX, high spread, or bad health).
+Make a balanced, professional judgment based on the data provided.
+
+Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation"}
 `;
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
