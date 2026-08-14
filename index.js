@@ -93,7 +93,6 @@ async function handleValidation(params) {
     }
 
     const billing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [account]);
-    console.log('🔍 SERVER SEES:', JSON.stringify(billing.rows[0]));
    if (billing.rows[0] && parseFloat(billing.rows[0].payee_25) >= parseFloat(billing.rows[0].payee_limit)) {
         return { status: 403, body: 'LIMIT_BLOCK' };
     }
@@ -174,7 +173,6 @@ TP1: ${d.tp1}
 app.get('/', async (req, res) => {
     try {
         console.log('✅ Root route hit!');
-        console.log('Query params:', req.query);
         
         const type = req.query.type;
 
@@ -1205,7 +1203,6 @@ function isRateLimited(accountId, limitSeconds = 3) {
 app.post('/', async (req, res) => {
     try {
         console.log('📥 [POST /] received');
-        console.log('  Body:', req.body);
         console.log('  Type:', req.body?.type || 'undefined');
 
         const d = req.body;
@@ -1347,7 +1344,6 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
         console.log('📥 Blocked non-MASTER TRADE_CLOSE:', d.source);
         return res.send('NON_MASTER_BLOCKED');
     }
-            console.log('✅ TRADE_CLOSE matched!');
             try {
                 const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: $${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
                 if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
@@ -1365,7 +1361,6 @@ Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_
                 console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
                 return res.send('NON_MASTER_BLOCKED');
             }
-            console.log('📥 TRADE_SIGNAL received:', JSON.stringify(d, null, 2));
             try {
                 // Display both fields safely
                 const lotDisplay = d.lot !== undefined ? d.lot : 'N/A';
