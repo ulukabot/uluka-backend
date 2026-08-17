@@ -1273,7 +1273,7 @@ app.post('/', async (req, res) => {
             return res.send('OK');
         }
 
-        // ─── 4. AI_DECISION ─────────────────────────────────────
+                // ─── 4. AI_DECISION ─────────────────────────────────────
         if (type === 'AI_DECISION') {
             if (!CLAUDE_API_KEY) {
                 return res.json({
@@ -1286,48 +1286,114 @@ app.post('/', async (req, res) => {
                     cot_sentiment: 'NEUTRAL'
                 });
             }
-            const context = d;
-            const prompt = `
+
+            const accId = d.account || d.account_id || 'unknown';
+
+            // 1. Check / reset monthly credits
+            try {
+                const credResult = await pool.query(
+                    'SELECT ai_credits, ai_credits_reset_month FROM billing WHERE account_id = $1',
+                    [accId]
+                );
+                let row = credResult.rows[0];
+                
+                // If no billing row exists, create one with default 10.00
+                if (!row) {
+                    await pool.query(
+                        'INSERT INTO billing (account_id, ai_credits, ai_credits_reset_month) VALUES ($1, 10.00, EXTRACT(MONTH FROM NOW()))',
+                        [accId]
+                    );
+                    row = { ai_credits: 10.00, ai_credits_reset_month: new Date().getMonth() + 1 };
+                }
+
+                let credits = parseFloat(row.ai_credits);
+                let resetMonth = parseInt(row.ai_credits_reset_month);
+                const currentMonth = new Date().getMonth() + 1;
+
+                // Reset credits at the start of each month
+                if (currentMonth !== resetMonth) {
+                    credits = 10.00;   // Reset to $10 monthly allowance
+                    resetMonth = currentMonth;
+                    await pool.query(
+                        'UPDATE billing SET ai_credits = 10.00, ai_credits_reset_month = $1 WHERE account_id = $2',
+                        [resetMonth, accId]
+                    );
+                }
+
+                // 2. If credits are exhausted → block AI with warning
+                if (credits <= 0) {
+                    console.log(`⛔ Monthly AI allowance exhausted for ${accId}`);
+                    return res.json({
+                        decision: 'TAKE',
+                        reason: 'Monthly AI credits used up. Contact admin to top up.',
+                        warning: 'CREDIT_EXHAUSTED'
+                    });
+                }
+
+                // 3. Process AI call normally
+                const context = d;
+                const prompt = `
 Trade: ${context.symbol} ${context.action}.
+Strategy: ${context.strategy || 'Unknown'}.
 Confidence: ${context.confidence || 50}.
 HTF bias: ${context.htf_bias || 'NEUTRAL'}.
 Session: ${context.session || 'London'}.
 Daily P&L: ${context.daily_pnl || 0}.
 Health: ${context.health || 50}.
-Last trades: ${JSON.stringify(context.last_trades || [])}.
-Decision: TAKE only if all conditions strong. Default SKIP if uncertain.
-Respond with JSON: {"decision":"SKIP" or "TAKE","confidence_adjustment":0,"risk_multiplier":1.0,"reason":"brief","news_sentiment":"NEUTRAL","news_summary":"","cot_sentiment":"NEUTRAL"}
-            `;
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: {
-                    'x-api-key': CLAUDE_API_KEY,
-                    'anthropic-version': '2023-06-01',
-                    'content-type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'claude-haiku-4-5-20251001',
-                    max_tokens: 200,
-                    system: 'You are a JSON-only responder.',
-                    messages: [{ role: 'user', content: prompt }]
-                })
-            });
-            const data = await response.json();
-            let text = data.content?.[0]?.text || '{"decision":"TAKE","reason":"Fallback"}';
-            const match = text.match(/\{.*\}/s);
-            if (match) {
-                const result = JSON.parse(match[0]);
-                return res.json({
-                    decision: result.decision === 'TAKE' ? 'TAKE' : 'SKIP',
-                    confidence_adjustment: parseInt(result.confidence_adjustment) || 0,
-                    risk_multiplier: parseFloat(result.risk_multiplier) || 1.0,
-                    reason: result.reason || '',
-                    news_sentiment: result.news_sentiment || 'NEUTRAL',
-                    news_summary: result.news_summary || '',
-                    cot_sentiment: result.cot_sentiment || 'NEUTRAL'
+
+Market Metrics:
+- ATR ratio: ${context.atr_ratio || 1.0}
+- Bollinger Width: ${context.bb_width || 0}
+- ADX Strength: ${context.adx_strength || 20}
+
+Decision logic:
+TAKE if the session is reasonable, HTF bias supports the trade, and confidence is above 60%.
+SKIP only if multiple conditions strongly oppose the trade (e.g., dead session, extremely low ADX, high spread, or bad health).
+Make a balanced, professional judgment based on the data provided.
+
+Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation"}
+`;
+                const response = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': CLAUDE_API_KEY,
+                        'anthropic-version': '2023-06-01',
+                        'content-type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'claude-haiku-4-5-20251001',
+                        max_tokens: 200,
+                        system: 'You are a JSON-only responder.',
+                        messages: [{ role: 'user', content: prompt }]
+                    })
                 });
+                const data = await response.json();
+                let text = data.content?.[0]?.text || '{"decision":"TAKE","reason":"Fallback"}';
+                const match = text.match(/\{.*\}/s);
+                
+                if (match) {
+                    const result = JSON.parse(match[0]);
+                    
+                    // 🔥 Deduct cost (approximately $0.0003 per call)
+                    const callCost = 0.0003;
+                    await pool.query('UPDATE billing SET ai_credits = ai_credits - $1 WHERE account_id = $2', [callCost, accId]);
+
+                    return res.json({
+                        decision: result.decision === 'TAKE' ? 'TAKE' : 'SKIP',
+                        confidence_adjustment: parseInt(result.confidence_adjustment) || 0,
+                        risk_multiplier: parseFloat(result.risk_multiplier) || 1.0,
+                        reason: result.reason || '',
+                        news_sentiment: result.news_sentiment || 'NEUTRAL',
+                        news_summary: result.news_summary || '',
+                        cot_sentiment: result.cot_sentiment || 'NEUTRAL'
+                    });
+                }
+                return res.json({ decision: 'TAKE', reason: 'Claude parse fallback' });
+
+            } catch (creditErr) {
+                console.error('AI Credit system error:', creditErr.message);
+                return res.json({ decision: 'TAKE', reason: 'Credit system error' });
             }
-            return res.json({ decision: 'TAKE', reason: 'Claude parse fallback' });
         }
 
         // ─── 5. ActivationAlert ──────────────────────────────────
