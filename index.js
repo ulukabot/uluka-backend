@@ -1058,6 +1058,62 @@ app.get('/admin/generate', (req, res) => {
     `);
 });
 
+// ─── ADMIN: TOP UP AI CREDITS ─────────────────────────────
+app.post('/api/admin/topup-credits', async (req, res) => {
+    try {
+        const secret = req.headers['x-admin-secret'] || req.body.admin_secret;
+        if (secret !== ADMIN_SECRET) {
+            return res.status(401).json({ error: 'Unauthorized: Invalid admin secret' });
+        }
+
+        const { account_id, amount } = req.body;
+
+        if (!account_id) {
+            return res.status(400).json({ error: 'Missing account_id' });
+        }
+        if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+            return res.status(400).json({ error: 'Invalid amount (must be a positive number)' });
+        }
+
+        const finalAmount = parseFloat(amount);
+
+        // Check if the billing record exists
+        const check = await pool.query('SELECT account_id FROM billing WHERE account_id = $1', [account_id]);
+        if (check.rows.length === 0) {
+            // Create a new billing record if it doesn't exist yet
+            await pool.query(
+                `INSERT INTO billing (account_id, ai_credits, ai_credits_reset_month) 
+                 VALUES ($1, $2, EXTRACT(MONTH FROM NOW()))`,
+                [account_id, finalAmount]
+            );
+        } else {
+            // Add the amount to existing credits
+            await pool.query(
+                'UPDATE billing SET ai_credits = ai_credits + $1 WHERE account_id = $2',
+                [finalAmount, account_id]
+            );
+        }
+
+        // Fetch the new balance to return
+        const updated = await pool.query('SELECT ai_credits FROM billing WHERE account_id = $1', [account_id]);
+        const newBalance = parseFloat(updated.rows[0]?.ai_credits || 0);
+
+        console.log(`🔋 AI credits topped up for account ${account_id}: +${finalAmount} (new balance: ${newBalance})`);
+
+        res.json({
+            success: true,
+            message: `Credits added successfully!`,
+            account_id: account_id,
+            amount_added: finalAmount,
+            new_balance: newBalance
+        });
+
+    } catch (error) {
+        console.error('🔥 Top-up error:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ============================================================
 // ADMIN ENDPOINTS FOR SCHEDULED TASKS
 // ============================================================
