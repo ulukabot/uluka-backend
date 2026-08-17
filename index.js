@@ -1114,6 +1114,194 @@ app.post('/api/admin/topup-credits', async (req, res) => {
     }
 });
 
+// ─── ADMIN: TOP-UP UI ──────────────────────────────────────
+app.get('/admin/topup', (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Uluka Ultra – Top-Up AI Credits</title>
+    <style>
+        body {
+            background: #060D1A;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: #0C1830;
+            border: 1px solid #1A304A;
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.8);
+        }
+        h1 {
+            color: #F0B429;
+            text-align: center;
+            letter-spacing: 2px;
+            font-size: 22px;
+            margin-top: 0;
+            margin-bottom: 30px;
+        }
+        label {
+            display: block;
+            margin-top: 16px;
+            font-size: 11px;
+            color: #8899BB;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: #060D1A;
+            border: 1px solid #1A304A;
+            border-radius: 6px;
+            color: #ffffff;
+            font-size: 14px;
+            box-sizing: border-box;
+            margin-top: 4px;
+        }
+        input:focus, select:focus {
+            border-color: #F0B429;
+            outline: none;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #F0B429;
+            border: none;
+            border-radius: 6px;
+            color: #060D1A;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 24px;
+            letter-spacing: 2px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #d19b1f;
+        }
+        #result {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 6px;
+            background: #060D1A;
+            border: 1px solid #1A304A;
+            word-break: break-all;
+            font-size: 14px;
+            display: none;
+        }
+        #result.success {
+            border-color: #00FF88;
+            display: block;
+        }
+        #result.error {
+            border-color: #FF5555;
+            display: block;
+        }
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 10px;
+            color: #334466;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8899BB;
+            font-size: 12px;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🔋 TOP UP AI CREDITS</h1>
+    <div class="subtitle">Refill a client's wallet instantly</div>
+
+    <form id="topupForm">
+        <label>Account ID *</label>
+        <input type="text" id="account_id" placeholder="e.g. 123456789" required>
+
+        <label>Amount ($) *</label>
+        <input type="number" id="amount" placeholder="e.g. 10.00" step="0.01" min="0.01" required>
+
+        <label>Admin Secret *</label>
+        <input type="password" id="admin_secret" placeholder="Your ADMIN_SECRET from Railway" required>
+
+        <button type="submit">⚡ TOP UP CREDITS</button>
+    </form>
+
+    <div id="result"></div>
+    <div class="footer">Secured · Uluka Ultra v2.5</div>
+</div>
+
+<script>
+    document.getElementById('topupForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const account_id = document.getElementById('account_id').value.trim();
+        const amount = parseFloat(document.getElementById('amount').value) || 0;
+        const admin_secret = document.getElementById('admin_secret').value.trim();
+
+        const resultDiv = document.getElementById('result');
+        resultDiv.style.display = 'block';
+        resultDiv.className = '';
+        resultDiv.innerHTML = '⏳ Processing...';
+
+        if (!account_id || !amount || !admin_secret) {
+            resultDiv.className = 'error';
+            resultDiv.innerHTML = '❌ Please fill in all required fields.';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/topup-credits', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-admin-secret': admin_secret
+                },
+                body: JSON.stringify({
+                    account_id: account_id,
+                    amount: amount
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                resultDiv.className = 'success';
+                resultDiv.innerHTML = \`
+                    ✅ <b>Credits Added!</b><br><br>
+                    <b>Account:</b> \${data.account_id}<br>
+                    <b>Added:</b> $\${data.amount_added}<br>
+                    <b>New Balance:</b> $\${data.new_balance}
+                \`;
+            } else {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = \`❌ Error: \${data.error || 'Unknown error'}\`;
+            }
+        } catch (err) {
+            resultDiv.className = 'error';
+            resultDiv.innerHTML = \`❌ Network error: \${err.message}\`;
+        }
+    });
+</script>
+</body>
+</html>
+    `);
+});
+
 // ============================================================
 // ADMIN ENDPOINTS FOR SCHEDULED TASKS
 // ============================================================
