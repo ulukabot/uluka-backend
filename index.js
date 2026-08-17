@@ -1955,7 +1955,7 @@ app.get('/api/admin/ai-evaluation', async (req, res) => {
             FROM trade_log 
             WHERE shadow_mode = TRUE 
             ORDER BY time DESC 
-            LIMIT 100
+            LIMIT 500
         `;
         const result = await pool.query(query);
         const trades = result.rows;
