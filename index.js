@@ -1301,6 +1301,33 @@ app.get('/admin/topup', (req, res) => {
 </html>
     `);
 });
+// ─── ADMIN: CHECK AI CREDITS ──────────────────────────────
+app.get('/api/admin/check-credits/:account_id', async (req, res) => {
+    const accountId = req.params.account_id;
+    try {
+        const result = await pool.query(
+            'SELECT ai_credits, ai_credits_reset_month FROM billing WHERE account_id = $1',
+            [accountId]
+        );
+        if (result.rows.length === 0) {
+            return res.json({ 
+                account_id: accountId, 
+                ai_credits: 0, 
+                message: 'No billing record found for this account. EA will create one on first AI call.' 
+            });
+        }
+        const row = result.rows[0];
+        res.json({
+            account_id: accountId,
+            ai_credits: parseFloat(row.ai_credits || 0),
+            ai_credits_reset_month: parseInt(row.ai_credits_reset_month || 0),
+            message: 'OK'
+        });
+    } catch (err) {
+        console.error('Credit check error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // ============================================================
 // ADMIN ENDPOINTS FOR SCHEDULED TASKS
