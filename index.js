@@ -2051,11 +2051,12 @@ async function updateNewsCache() {
     }
 }
 
-// ─── MANUAL TEST ENDPOINT (To verify the data source) ─────────────
+// ─── MANUAL TEST ENDPOINT (Enhanced Debug) ────────────────
 app.get('/api/test-news', async (req, res) => {
-    await updateNewsCache(); // Force fresh fetch
+    // Force a fresh fetch
+    await updateNewsCache();
 
-    // Helper to format dates to GMT+5:30 (Indian Standard Time)
+    // Helper to format IST
     const formatIST = (dateObj) => {
         return new Intl.DateTimeFormat('en-GB', {
             timeZone: 'Asia/Kolkata',
@@ -2065,18 +2066,79 @@ app.get('/api/test-news', async (req, res) => {
         }).format(dateObj);
     };
 
+    // Re-fetch raw data specifically for this debug response
+    let rawEvents = [];
+    let sourceUsed = "None";
+    let apiSuccess = false;
+
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        let data = null;
+
+        // Try n1try.com
+        try {
+            const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
+            const response = await fetch(url);
+            if (response.ok) {
+                data = await response.json();
+                sourceUsed = "n1try.com";
+            }
+        } catch (e) { /* fall through */ }
+
+        // Try economic-calendar.xyz
+        if (!data) {
+            try {
+                const url = `https://economic-calendar.xyz/api/events?date=${today}`;
+                const response = await fetch(url);
+                if (response.ok) {
+                    data = await response.json();
+                    sourceUsed = "economic-calendar.xyz";
+                }
+            } catch (e) { /* fall through */ }
+        }
+
+        if (data && Array.isArray(data)) {
+            apiSuccess = true;
+            // Filter to upcoming events (next 24 hours) for debugging
+            const now = Date.now();
+            rawEvents = data
+                .filter(e => e.time && new Date(e.time).getTime() > now)
+                .map(e => ({
+                    title: e.title || 'N/A',
+                    impact: e.impact || 'N/A',
+                    time: e.time || 'N/A',
+                    time_ist: e.time ? formatIST(new Date(e.time)) : 'N/A',
+                    minutes_until: e.time ? Math.round((new Date(e.time).getTime() - now) / 60000) : 'N/A'
+                }))
+                .sort((a, b) => a.minutes_until - b.minutes_until)
+                .slice(0, 20); // Show next 20 events
+        }
+    } catch (err) {
+        console.warn('Debug fetch failed:', err.message);
+    }
+
     const now = new Date();
     const lastUpdate = new Date(lastNewsCheck);
 
     res.json({
         status: 'SUCCESS',
-        current_server_time_utc: now.toISOString(),
-        current_server_time_ist: formatIST(now),
+        api_fetch_status: apiSuccess ? '✅ API reachable' : '❌ All APIs unreachable',
+        source_used: sourceUsed,
+        total_events_fetched: rawEvents.length,
+
+        // ─── CACHE STATE ────────────────────────────────
         high_news_blocked: highImpactUSDBlock,
         medium_news_blocked: mediumImpactUSDBlock,
+        message: `High: ${highImpactUSDBlock ? 'ON' : 'OFF'} | Medium: ${mediumImpactUSDBlock ? 'ON' : 'OFF'}`,
+
+        // ─── TIMESTAMPS ──────────────────────────────────
+        current_server_time_utc: now.toISOString(),
+        current_server_time_ist: formatIST(now),
         last_cache_update_utc: lastUpdate.toISOString(),
         last_cache_update_ist: formatIST(lastUpdate),
-        message: `High: ${highImpactUSDBlock ? 'ON' : 'OFF'} | Medium: ${mediumImpactUSDBlock ? 'ON' : 'OFF'}`
+
+        // ─── RAW EVENTS (DEBUG) ────────────────────────
+        upcoming_events: rawEvents
     });
 });
 // Run on startup and every 60 minutes
