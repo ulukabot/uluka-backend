@@ -2123,29 +2123,40 @@ app.get('/api/test-news', async (req, res) => {
     try {
         let data = null;
 
-        // 1. n1try.com
+        // ─── 1. n1try.com ──────────────────────────────────
         try {
             const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
             const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
             if (response.ok) {
-                data = await response.json();
-                sourceUsed = "n1try.com";
+                const raw = await response.json();
+                // Only accept if it's a non‑empty array
+                if (Array.isArray(raw) && raw.length > 0) {
+                    data = raw;
+                    sourceUsed = "n1try.com";
+                } else {
+                    console.log('ℹ️ n1try.com returned empty or invalid data');
+                }
             }
         } catch (e) { /* ignore */ }
 
-        // 2. economic-calendar.xyz
+        // ─── 2. economic-calendar.xyz ──────────────────────
         if (!data) {
             try {
                 const url = `https://economic-calendar.xyz/api/events?date=${today}`;
                 const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
                 if (response.ok) {
-                    data = await response.json();
-                    sourceUsed = "economic-calendar.xyz";
+                    const raw = await response.json();
+                    if (Array.isArray(raw) && raw.length > 0) {
+                        data = raw;
+                        sourceUsed = "economic-calendar.xyz";
+                    } else {
+                        console.log('ℹ️ economic-calendar.xyz returned empty or invalid data');
+                    }
                 }
             } catch (e) { /* ignore */ }
         }
 
-        // 3. Alpha Vantage (with time parser)
+        // ─── 3. Alpha Vantage (with time parser) ──────────
         if (!data && process.env.ALPHA_VANTAGE_KEY) {
             try {
                 const key = process.env.ALPHA_VANTAGE_KEY;
@@ -2180,7 +2191,11 @@ app.get('/api/test-news', async (req, res) => {
                         if (parsed.length > 0) {
                             data = parsed;
                             sourceUsed = "Alpha Vantage";
+                        } else {
+                            console.log('ℹ️ Alpha Vantage returned no parseable events');
                         }
+                    } else {
+                        console.log('⚠️ Alpha Vantage response missing feed:', avData);
                     }
                 }
             } catch (e) {
@@ -2188,7 +2203,8 @@ app.get('/api/test-news', async (req, res) => {
             }
         }
 
-        if (data && Array.isArray(data)) {
+        // ─── Build response ────────────────────────────────
+        if (data && Array.isArray(data) && data.length > 0) {
             apiSuccess = true;
             rawEvents = data
                 .filter(e => e.time && new Date(e.time).getTime() > now)
