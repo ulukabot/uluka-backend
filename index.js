@@ -2023,47 +2023,56 @@ async function updateNewsCache() {
         }
 
         // ─── SOURCE 3: Alpha Vantage (with time parser) ──
-        if (!data && process.env.ALPHA_VANTAGE_KEY) {
-            try {
-                const key = process.env.ALPHA_VANTAGE_KEY;
-                const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
-                const response = await fetch(url, { timeout: 8000 });
-                if (response.ok) {
-                    const avData = await response.json();
-                    if (avData.feed && Array.isArray(avData.feed)) {
-                        const parsed = avData.feed
-                            .map(item => {
-                                const dt = parseAlphaVantageTime(item.time_published);
-                                if (!dt) return null;
-                                return {
-                                    title: item.title || 'N/A',
-                                    impact: 'Medium',
-                                    time: dt.toISOString()
-                                };
-                            })
-                            .filter(e => e !== null)
-                            .map(event => {
-                                const title = event.title.toLowerCase();
-                                if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
-                                    title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
-                                    title.includes('gdp') || title.includes('employment')) {
-                                    event.impact = 'High';
-                                } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
-                                           title.includes('durable') || title.includes('trade')) {
-                                    event.impact = 'Medium';
-                                }
-                                return event;
-                            });
-                        if (parsed.length > 0) {
-                            data = parsed;
-                            sourceUsed = "Alpha Vantage";
+if (!data && process.env.ALPHA_VANTAGE_KEY) {
+    try {
+        const key = process.env.ALPHA_VANTAGE_KEY;
+        const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
+        const response = await fetch(url, { timeout: 8000 });
+        if (response.ok) {
+            const avData = await response.json();
+            // Check for rate limit or error message
+            if (avData.Information && avData.Information.includes('rate limit')) {
+                console.warn('⚠️ Alpha Vantage rate limit reached – skipping.');
+            } else if (avData.feed && Array.isArray(avData.feed)) {
+                // ✅ Set sourceUsed immediately – we got a valid feed, even if empty
+                sourceUsed = "Alpha Vantage";
+                
+                const parsed = avData.feed
+                    .map(item => {
+                        const dt = parseAlphaVantageTime(item.time_published);
+                        if (!dt) return null;
+                        return {
+                            title: item.title || 'N/A',
+                            impact: 'Medium',
+                            time: dt.toISOString()
+                        };
+                    })
+                    .filter(e => e !== null)
+                    .map(event => {
+                        const title = event.title.toLowerCase();
+                        if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
+                            title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
+                            title.includes('gdp') || title.includes('employment')) {
+                            event.impact = 'High';
+                        } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
+                                   title.includes('durable') || title.includes('trade')) {
+                            event.impact = 'Medium';
                         }
-                    }
+                        return event;
+                    });
+                
+                // Only set data if there are upcoming events (to possibly block trades)
+                if (parsed.length > 0) {
+                    data = parsed;
                 }
-            } catch (e) {
-                console.warn('Alpha Vantage fetch error:', e.message);
+                // If parsed is empty, data stays null – that's fine, no events to block.
+                console.log(`ℹ️ Alpha Vantage feed fetched (${parsed.length} upcoming events in next 30 mins).`);
             }
         }
+    } catch (e) {
+        console.warn('Alpha Vantage fetch error:', e.message);
+    }
+}
 
         // ─── Reset block flags ──────────────────────────────
         highImpactUSDBlock = false;
