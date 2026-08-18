@@ -2102,12 +2102,9 @@ async function updateNewsCache() {
     }
 }
 
-// ─── MANUAL TEST ENDPOINT (Enhanced Debug) ────────────────
 app.get('/api/test-news', async (req, res) => {
-    // Force a fresh cache update (this already uses AV internally)
     await updateNewsCache();
 
-    // Helper to format IST
     const formatIST = (dateObj) => {
         return new Intl.DateTimeFormat('en-GB', {
             timeZone: 'Asia/Kolkata',
@@ -2117,7 +2114,6 @@ app.get('/api/test-news', async (req, res) => {
         }).format(dateObj);
     };
 
-    // ─── Re‑fetch raw data for debug, now including Alpha Vantage ──
     let rawEvents = [];
     let sourceUsed = "None";
     let apiSuccess = false;
@@ -2149,7 +2145,7 @@ app.get('/api/test-news', async (req, res) => {
             } catch (e) { /* ignore */ }
         }
 
-        // 3. Alpha Vantage (NEWS_SENTIMENT) – NEW!
+        // 3. Alpha Vantage (with time parser)
         if (!data && process.env.ALPHA_VANTAGE_KEY) {
             try {
                 const key = process.env.ALPHA_VANTAGE_KEY;
@@ -2158,32 +2154,40 @@ app.get('/api/test-news', async (req, res) => {
                 if (response.ok) {
                     const avData = await response.json();
                     if (avData.feed && Array.isArray(avData.feed)) {
-                        // Convert AV feed to our event format
-                        data = avData.feed.map(item => ({
-                            title: item.title || 'N/A',
-                            impact: 'Medium', // default
-                            time: new Date(item.time_published).toISOString()
-                        }));
-                        // Refine impact based on keywords
-                        data = data.map(event => {
-                            const title = event.title.toLowerCase();
-                            if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
-                                title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
-                                title.includes('gdp') || title.includes('employment')) {
-                                event.impact = 'High';
-                            } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
-                                       title.includes('durable') || title.includes('trade')) {
-                                event.impact = 'Medium';
-                            }
-                            return event;
-                        });
-                        sourceUsed = "Alpha Vantage";
+                        const parsed = avData.feed
+                            .map(item => {
+                                const dt = parseAlphaVantageTime(item.time_published);
+                                if (!dt) return null;
+                                return {
+                                    title: item.title || 'N/A',
+                                    impact: 'Medium',
+                                    time: dt.toISOString()
+                                };
+                            })
+                            .filter(e => e !== null)
+                            .map(event => {
+                                const title = event.title.toLowerCase();
+                                if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
+                                    title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
+                                    title.includes('gdp') || title.includes('employment')) {
+                                    event.impact = 'High';
+                                } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
+                                           title.includes('durable') || title.includes('trade')) {
+                                    event.impact = 'Medium';
+                                }
+                                return event;
+                            });
+                        if (parsed.length > 0) {
+                            data = parsed;
+                            sourceUsed = "Alpha Vantage";
+                        }
                     }
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) {
+                console.warn('Alpha Vantage fetch error:', e.message);
+            }
         }
 
-        // If we got data, format it for the response
         if (data && Array.isArray(data)) {
             apiSuccess = true;
             rawEvents = data
@@ -2196,7 +2200,7 @@ app.get('/api/test-news', async (req, res) => {
                     minutes_until: e.time ? Math.round((new Date(e.time).getTime() - now) / 60000) : 'N/A'
                 }))
                 .sort((a, b) => a.minutes_until - b.minutes_until)
-                .slice(0, 20); // Show next 20 events
+                .slice(0, 20);
         }
     } catch (err) {
         console.warn('Debug fetch failed:', err.message);
@@ -2220,6 +2224,7 @@ app.get('/api/test-news', async (req, res) => {
         upcoming_events: rawEvents
     });
 });
+
 // ─── AI EVALUATION DASHBOARD (Admin Only) ──────────────────
 app.get('/api/admin/ai-evaluation', async (req, res) => {
     const secret = req.query.secret;
