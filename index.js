@@ -2396,6 +2396,21 @@ function scheduleMorningBrief() {
 scheduleMorningBrief();
 console.log('📅 Morning brief scheduler started (daily at 08:00 GMT)');
 
+app.get('/test-av', async (req, res) => {
+    const key = process.env.ALPHA_VANTAGE_KEY;
+    if (!key) {
+        return res.status(500).send('ALPHA_VANTAGE_KEY environment variable is not set.');
+    }
+    const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=10&apikey=${key}`;
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        res.json(data);
+    } catch (e) {
+        res.status(500).send('Fetch error: ' + e.message);
+    }
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
