@@ -2089,7 +2089,7 @@ async function updateNewsCache() {
 
 // ─── MANUAL TEST ENDPOINT (Enhanced Debug) ────────────────
 app.get('/api/test-news', async (req, res) => {
-    // Force a fresh fetch
+    // Force a fresh cache update (this already uses AV internally)
     await updateNewsCache();
 
     // Helper to format IST
@@ -2102,41 +2102,75 @@ app.get('/api/test-news', async (req, res) => {
         }).format(dateObj);
     };
 
-    // Re-fetch raw data specifically for this debug response
+    // ─── Re‑fetch raw data for debug, now including Alpha Vantage ──
     let rawEvents = [];
     let sourceUsed = "None";
     let apiSuccess = false;
+    const now = Date.now();
+    const today = new Date().toISOString().split('T')[0];
 
     try {
-        const today = new Date().toISOString().split('T')[0];
         let data = null;
 
-        // Try n1try.com
+        // 1. n1try.com
         try {
             const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
-            const response = await fetch(url);
+            const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
             if (response.ok) {
                 data = await response.json();
                 sourceUsed = "n1try.com";
             }
-        } catch (e) { /* fall through */ }
+        } catch (e) { /* ignore */ }
 
-        // Try economic-calendar.xyz
+        // 2. economic-calendar.xyz
         if (!data) {
             try {
                 const url = `https://economic-calendar.xyz/api/events?date=${today}`;
-                const response = await fetch(url);
+                const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
                 if (response.ok) {
                     data = await response.json();
                     sourceUsed = "economic-calendar.xyz";
                 }
-            } catch (e) { /* fall through */ }
+            } catch (e) { /* ignore */ }
         }
 
+        // 3. Alpha Vantage (NEWS_SENTIMENT) – NEW!
+        if (!data && process.env.ALPHA_VANTAGE_KEY) {
+            try {
+                const key = process.env.ALPHA_VANTAGE_KEY;
+                const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
+                const response = await fetch(url, { timeout: 8000 });
+                if (response.ok) {
+                    const avData = await response.json();
+                    if (avData.feed && Array.isArray(avData.feed)) {
+                        // Convert AV feed to our event format
+                        data = avData.feed.map(item => ({
+                            title: item.title || 'N/A',
+                            impact: 'Medium', // default
+                            time: new Date(item.time_published).toISOString()
+                        }));
+                        // Refine impact based on keywords
+                        data = data.map(event => {
+                            const title = event.title.toLowerCase();
+                            if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
+                                title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
+                                title.includes('gdp') || title.includes('employment')) {
+                                event.impact = 'High';
+                            } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
+                                       title.includes('durable') || title.includes('trade')) {
+                                event.impact = 'Medium';
+                            }
+                            return event;
+                        });
+                        sourceUsed = "Alpha Vantage";
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        // If we got data, format it for the response
         if (data && Array.isArray(data)) {
             apiSuccess = true;
-            // Filter to upcoming events (next 24 hours) for debugging
-            const now = Date.now();
             rawEvents = data
                 .filter(e => e.time && new Date(e.time).getTime() > now)
                 .map(e => ({
@@ -2153,7 +2187,7 @@ app.get('/api/test-news', async (req, res) => {
         console.warn('Debug fetch failed:', err.message);
     }
 
-    const now = new Date();
+    const nowDate = new Date();
     const lastUpdate = new Date(lastNewsCheck);
 
     res.json({
@@ -2161,26 +2195,16 @@ app.get('/api/test-news', async (req, res) => {
         api_fetch_status: apiSuccess ? '✅ API reachable' : '❌ All APIs unreachable',
         source_used: sourceUsed,
         total_events_fetched: rawEvents.length,
-
-        // ─── CACHE STATE ────────────────────────────────
         high_news_blocked: highImpactUSDBlock,
         medium_news_blocked: mediumImpactUSDBlock,
         message: `High: ${highImpactUSDBlock ? 'ON' : 'OFF'} | Medium: ${mediumImpactUSDBlock ? 'ON' : 'OFF'}`,
-
-        // ─── TIMESTAMPS ──────────────────────────────────
-        current_server_time_utc: now.toISOString(),
-        current_server_time_ist: formatIST(now),
+        current_server_time_utc: nowDate.toISOString(),
+        current_server_time_ist: formatIST(nowDate),
         last_cache_update_utc: lastUpdate.toISOString(),
         last_cache_update_ist: formatIST(lastUpdate),
-
-        // ─── RAW EVENTS (DEBUG) ────────────────────────
         upcoming_events: rawEvents
     });
 });
-// Run on startup and every 60 minutes
-updateNewsCache(); 
-setInterval(updateNewsCache, 60 * 60 * 1000);
-
 // ─── AI EVALUATION DASHBOARD (Admin Only) ──────────────────
 app.get('/api/admin/ai-evaluation', async (req, res) => {
     const secret = req.query.secret;
