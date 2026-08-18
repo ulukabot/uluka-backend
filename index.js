@@ -2103,6 +2103,9 @@ async function updateNewsCache() {
 }
 
 app.get('/api/test-news', async (req, res) => {
+    console.log('⚡ TEST-NEWS v2.5.1 - START');
+    console.log('🔑 ALPHA_VANTAGE_KEY exists?', !!process.env.ALPHA_VANTAGE_KEY);
+
     await updateNewsCache();
 
     const formatIST = (dateObj) => {
@@ -2125,45 +2128,62 @@ app.get('/api/test-news', async (req, res) => {
 
         // ─── 1. n1try.com ──────────────────────────────────
         try {
+            console.log('🔍 Trying n1try.com...');
             const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
             const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
             if (response.ok) {
                 const raw = await response.json();
-                // Only accept if it's a non‑empty array
+                console.log('n1try response type:', typeof raw, 'isArray:', Array.isArray(raw), 'length:', raw?.length);
                 if (Array.isArray(raw) && raw.length > 0) {
                     data = raw;
                     sourceUsed = "n1try.com";
+                    console.log('✅ n1try.com provided data');
                 } else {
                     console.log('ℹ️ n1try.com returned empty or invalid data');
                 }
+            } else {
+                console.log('⚠️ n1try.com HTTP', response.status);
             }
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+            console.log('❌ n1try.com error:', e.message);
+        }
 
         // ─── 2. economic-calendar.xyz ──────────────────────
         if (!data) {
             try {
+                console.log('🔍 Trying economic-calendar.xyz...');
                 const url = `https://economic-calendar.xyz/api/events?date=${today}`;
                 const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
                 if (response.ok) {
                     const raw = await response.json();
+                    console.log('economic-calendar response type:', typeof raw, 'isArray:', Array.isArray(raw), 'length:', raw?.length);
                     if (Array.isArray(raw) && raw.length > 0) {
                         data = raw;
                         sourceUsed = "economic-calendar.xyz";
+                        console.log('✅ economic-calendar.xyz provided data');
                     } else {
                         console.log('ℹ️ economic-calendar.xyz returned empty or invalid data');
                     }
+                } else {
+                    console.log('⚠️ economic-calendar.xyz HTTP', response.status);
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) {
+                console.log('❌ economic-calendar.xyz error:', e.message);
+            }
         }
 
         // ─── 3. Alpha Vantage (with time parser) ──────────
+        console.log('Data before AV:', data);
         if (!data && process.env.ALPHA_VANTAGE_KEY) {
+            console.log('🔍 Attempting Alpha Vantage...');
             try {
                 const key = process.env.ALPHA_VANTAGE_KEY;
                 const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
                 const response = await fetch(url, { timeout: 8000 });
+                console.log('Alpha Vantage response status:', response.status);
                 if (response.ok) {
                     const avData = await response.json();
+                    console.log('Alpha Vantage feed exists?', !!avData.feed, 'feed length:', avData.feed?.length);
                     if (avData.feed && Array.isArray(avData.feed)) {
                         const parsed = avData.feed
                             .map(item => {
@@ -2191,16 +2211,21 @@ app.get('/api/test-news', async (req, res) => {
                         if (parsed.length > 0) {
                             data = parsed;
                             sourceUsed = "Alpha Vantage";
+                            console.log('✅ Alpha Vantage provided', parsed.length, 'events');
                         } else {
                             console.log('ℹ️ Alpha Vantage returned no parseable events');
                         }
                     } else {
                         console.log('⚠️ Alpha Vantage response missing feed:', avData);
                     }
+                } else {
+                    console.log('⚠️ Alpha Vantage HTTP', response.status);
                 }
             } catch (e) {
-                console.warn('Alpha Vantage fetch error:', e.message);
+                console.warn('❌ Alpha Vantage fetch error:', e.message);
             }
+        } else {
+            console.log('⏭️ Skipped Alpha Vantage because data is truthy or key missing.');
         }
 
         // ─── Build response ────────────────────────────────
