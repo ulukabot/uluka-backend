@@ -2339,6 +2339,31 @@ app.get('/test-av', async (req, res) => {
     }
 });
 
+// ─── Debug: Show current news state ──────────────────────────
+app.get('/news-state', (req, res) => {
+    res.json({
+        lastNewsCheck: lastNewsCheck,
+        lastNewsCheckISO: lastNewsCheck ? new Date(lastNewsCheck).toISOString() : null,
+        lastSourceUsed: lastSourceUsed,
+        highImpactUSDBlock: highImpactUSDBlock,
+        mediumImpactUSDBlock: mediumImpactUSDBlock,
+        now: new Date().toISOString()
+    });
+});
+
+// ─── Force a cache update and show result ────────────────────
+app.get('/force-cache', async (req, res) => {
+    await updateNewsCache();
+    res.json({
+        message: 'Cache updated',
+        lastNewsCheck: lastNewsCheck,
+        lastNewsCheckISO: new Date(lastNewsCheck).toISOString(),
+        lastSourceUsed: lastSourceUsed,
+        highImpactUSDBlock: highImpactUSDBlock,
+        mediumImpactUSDBlock: mediumImpactUSDBlock
+    });
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
