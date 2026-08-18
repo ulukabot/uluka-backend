@@ -2081,6 +2081,140 @@ app.get('/api/admin/ai-evaluation', async (req, res) => {
     }
 });
 
+// ─── MORNING BRIEF GENERATOR ──────────────────────────────
+async function generateMorningBrief(accountId = null, clientName = null) {
+    if (!CLAUDE_API_KEY) return '⚠️ Claude API key not configured.';
+
+    let accountData = '';
+    if (accountId) {
+        const billingResult = await pool.query(
+            `SELECT current_balance, net_profit, payee_25 FROM billing WHERE account_id = $1`,
+            [accountId]
+        );
+        if (billingResult.rows.length > 0) {
+            const b = billingResult.rows[0];
+            accountData = `
+Account: ${accountId}
+Balance: $${parseFloat(b.current_balance || 0).toFixed(2)}
+Net Profit: $${parseFloat(b.net_profit || 0).toFixed(2)}
+Payee (25%): $${parseFloat(b.payee_25 || 0).toFixed(2)}
+`;
+        }
+    }
+
+    const today = new Date().toLocaleDateString('en-GB', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+    });
+
+    const prompt = `
+You are Uluka Ultra's AI trading assistant. Generate a concise, professional morning trading brief for today (${today}).
+
+Use this structure:
+1. 🌅 Brief header with date and session (London Open)
+2. 📊 Market context table (XAUUSD, XAGUSD, DXY sentiment and key levels)
+3. 🔍 Key observations (2-3 bullet points about current market conditions)
+4. ⚡ Active trade reminder (if any, use the data below)
+5. ⚠️ Risk reminders
+
+IMPORTANT: Respond in PLAIN TEXT with markdown-style formatting (headers with #, bullet points with -, tables with |). 
+Do NOT wrap in JSON. Do NOT use HTML. Just plain text with markdown.
+
+${accountData ? `\nCurrent account data:\n${accountData}` : ''}
+
+Make it professional, balanced, and useful for a trader starting their day.
+`;
+
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'x-api-key': CLAUDE_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 600,
+                system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
+                messages: [{ role: 'user', content: prompt }]
+            })
+        });
+
+        const data = await response.json();
+        return data.content?.[0]?.text || '⚠️ Unable to generate brief at this time.';
+    } catch (error) {
+        console.error('❌ Morning brief generation error:', error.message);
+        return '⚠️ Error generating morning brief.';
+    }
+}
+
+// ─── ROUTE: SEND MORNING BRIEF TO TELEGRAM ──────────────
+app.post('/admin/send-morning-brief', async (req, res) => {
+    const secret = req.query.secret || req.body.secret;
+    if (secret !== ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const brief = await generateMorningBrief();
+        if (!brief) {
+            return res.status(500).json({ error: 'Failed to generate brief' });
+        }
+
+        let sent = false;
+        if (PREMIUM_GROUP_ID) {
+            sent = await sendToTelegram(PREMIUM_GROUP_ID, brief);
+        }
+        if (FREE_GROUP_ID && !sent) {
+            sent = await sendToTelegram(FREE_GROUP_ID, brief);
+        }
+
+        if (sent) {
+            console.log('✅ Morning brief sent to Telegram');
+            res.json({ success: true, message: 'Morning brief sent!' });
+        } else {
+            res.status(500).json({ error: 'Failed to send to Telegram' });
+        }
+    } catch (error) {
+        console.error('🔥 Error sending morning brief:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─── SCHEDULED JOB: Morning brief at London Open (08:00 GMT) ──
+function scheduleMorningBrief() {
+    const now = new Date();
+    const nextRun = new Date(now);
+    nextRun.setUTCHours(8, 0, 0, 0); // 08:00 GMT
+    if (now.getUTCHours() >= 8) {
+        nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+    }
+    const delay = nextRun.getTime() - now.getTime();
+
+    setTimeout(async () => {
+        console.log('🌅 Running scheduled morning brief...');
+        try {
+            const brief = await generateMorningBrief();
+            if (brief) {
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, brief);
+                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, brief);
+                console.log('✅ Scheduled morning brief sent');
+            }
+        } catch (e) {
+            console.error('❌ Scheduled morning brief failed:', e.message);
+        }
+        // Re-schedule for next day
+        scheduleMorningBrief();
+    }, delay);
+}
+
+// Start the scheduler
+scheduleMorningBrief();
+console.log('📅 Morning brief scheduler started (daily at 08:00 GMT)');
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
