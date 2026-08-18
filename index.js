@@ -10,6 +10,17 @@ app.use(express.json());
 
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
 
+function parseAlphaVantageTime(timeStr) {
+    if (!timeStr || timeStr.length < 15) return null;
+    const year = parseInt(timeStr.substring(0, 4));
+    const month = parseInt(timeStr.substring(4, 6)) - 1;
+    const day = parseInt(timeStr.substring(6, 8));
+    const hour = parseInt(timeStr.substring(9, 11));
+    const min = parseInt(timeStr.substring(11, 13));
+    const sec = parseInt(timeStr.substring(13, 15));
+    return new Date(Date.UTC(year, month, day, hour, min, sec));
+}
+
 // ─── JSON PARSE ERROR HANDLER ──────────────────────────────
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
@@ -2010,42 +2021,47 @@ async function updateNewsCache() {
             } catch (e) { /* ignore */ }
         }
 
-        // ─── SOURCE 3: Alpha Vantage (NEWS_SENTIMENT) ─────
+        // ─── SOURCE 3: Alpha Vantage (with time parser) ──
         if (!data && process.env.ALPHA_VANTAGE_KEY) {
             try {
                 const key = process.env.ALPHA_VANTAGE_KEY;
-                // We'll request news for the last 7 days, then filter USD-related events.
                 const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
                 const response = await fetch(url, { timeout: 8000 });
                 if (response.ok) {
                     const avData = await response.json();
                     if (avData.feed && Array.isArray(avData.feed)) {
-                        // Convert Alpha Vantage feed to our event format
-                        data = avData.feed.map(item => ({
-                            title: item.title || 'N/A',
-                            impact: item.overall_sentiment_score > 0.25 ? 'High' : (item.overall_sentiment_score < -0.25 ? 'High' : 'Medium'), // crude mapping
-                            time: new Date(item.time_published).toISOString(),
-                            // We can't get exact impact from AV, so we'll treat all as 'Medium' for safety
-                            // Better: we'll only use AV if we have no other source, and we'll mark all as 'Medium' to be safe.
-                            // To improve, we could parse the title for keywords like "FOMC", "NFP", "CPI", etc.
-                        }));
-                        // Refine impact based on keywords
-                        data = data.map(event => {
-                            const title = event.title.toLowerCase();
-                            if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
-                                title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
-                                title.includes('gdp') || title.includes('employment')) {
-                                event.impact = 'High';
-                            } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
-                                       title.includes('durable') || title.includes('trade')) {
-                                event.impact = 'Medium';
-                            }
-                            return event;
-                        });
-                        sourceUsed = "Alpha Vantage";
+                        const parsed = avData.feed
+                            .map(item => {
+                                const dt = parseAlphaVantageTime(item.time_published);
+                                if (!dt) return null;
+                                return {
+                                    title: item.title || 'N/A',
+                                    impact: 'Medium',
+                                    time: dt.toISOString()
+                                };
+                            })
+                            .filter(e => e !== null)
+                            .map(event => {
+                                const title = event.title.toLowerCase();
+                                if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
+                                    title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
+                                    title.includes('gdp') || title.includes('employment')) {
+                                    event.impact = 'High';
+                                } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
+                                           title.includes('durable') || title.includes('trade')) {
+                                    event.impact = 'Medium';
+                                }
+                                return event;
+                            });
+                        if (parsed.length > 0) {
+                            data = parsed;
+                            sourceUsed = "Alpha Vantage";
+                        }
                     }
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) {
+                console.warn('Alpha Vantage fetch error:', e.message);
+            }
         }
 
         // ─── Reset block flags ──────────────────────────────
@@ -2072,7 +2088,6 @@ async function updateNewsCache() {
 
         lastNewsCheck = Date.now();
 
-        // ─── Log summary ──────────────────────────────────────
         if (sourceUsed) {
             console.log(`📰 News cache updated from ${sourceUsed} | High: ${highImpactUSDBlock} | Medium: ${mediumImpactUSDBlock}`);
         } else {
