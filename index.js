@@ -1991,6 +1991,7 @@ app.get('/api/equity/:account', async (req, res) => {
 let highImpactUSDBlock = false; // Separate flag for High
 let mediumImpactUSDBlock = false; // Separate flag for Medium
 let lastNewsCheck = 0;
+let lastSourceUsed = "None";
 
 async function updateNewsCache() {
     try {
@@ -2089,6 +2090,7 @@ async function updateNewsCache() {
         lastNewsCheck = Date.now();
 
         if (sourceUsed) {
+            lastSourceUsed = sourceUsed;
             console.log(`📰 News cache updated from ${sourceUsed} | High: ${highImpactUSDBlock} | Medium: ${mediumImpactUSDBlock}`);
         } else {
             console.warn('⚠️ No news API reachable – news block disabled.');
@@ -2103,11 +2105,6 @@ async function updateNewsCache() {
 }
 
 app.get('/api/test-news', async (req, res) => {
-    console.log('⚡ TEST-NEWS v2.5.1 - START');
-    console.log('🔑 ALPHA_VANTAGE_KEY exists?', !!process.env.ALPHA_VANTAGE_KEY);
-
-    await updateNewsCache();
-
     const formatIST = (dateObj) => {
         return new Intl.DateTimeFormat('en-GB', {
             timeZone: 'Asia/Kolkata',
@@ -2117,144 +2114,14 @@ app.get('/api/test-news', async (req, res) => {
         }).format(dateObj);
     };
 
-    let rawEvents = [];
-    let sourceUsed = "None";
-    let apiSuccess = false;
-    const now = Date.now();
-    const today = new Date().toISOString().split('T')[0];
-
-    try {
-        let data = null;
-
-        // ─── 1. n1try.com ──────────────────────────────────
-        try {
-            console.log('🔍 Trying n1try.com...');
-            const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
-            const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
-            if (response.ok) {
-                const raw = await response.json();
-                console.log('n1try response type:', typeof raw, 'isArray:', Array.isArray(raw), 'length:', raw?.length);
-                if (Array.isArray(raw) && raw.length > 0) {
-                    data = raw;
-                    sourceUsed = "n1try.com";
-                    console.log('✅ n1try.com provided data');
-                } else {
-                    console.log('ℹ️ n1try.com returned empty or invalid data');
-                }
-            } else {
-                console.log('⚠️ n1try.com HTTP', response.status);
-            }
-        } catch (e) {
-            console.log('❌ n1try.com error:', e.message);
-        }
-
-        // ─── 2. economic-calendar.xyz ──────────────────────
-        if (!data) {
-            try {
-                console.log('🔍 Trying economic-calendar.xyz...');
-                const url = `https://economic-calendar.xyz/api/events?date=${today}`;
-                const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
-                if (response.ok) {
-                    const raw = await response.json();
-                    console.log('economic-calendar response type:', typeof raw, 'isArray:', Array.isArray(raw), 'length:', raw?.length);
-                    if (Array.isArray(raw) && raw.length > 0) {
-                        data = raw;
-                        sourceUsed = "economic-calendar.xyz";
-                        console.log('✅ economic-calendar.xyz provided data');
-                    } else {
-                        console.log('ℹ️ economic-calendar.xyz returned empty or invalid data');
-                    }
-                } else {
-                    console.log('⚠️ economic-calendar.xyz HTTP', response.status);
-                }
-            } catch (e) {
-                console.log('❌ economic-calendar.xyz error:', e.message);
-            }
-        }
-
-        // ─── 3. Alpha Vantage (with time parser) ──────────
-        console.log('Data before AV:', data);
-        if (!data && process.env.ALPHA_VANTAGE_KEY) {
-            console.log('🔍 Attempting Alpha Vantage...');
-            try {
-                const key = process.env.ALPHA_VANTAGE_KEY;
-                const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
-                const response = await fetch(url, { timeout: 8000 });
-                console.log('Alpha Vantage response status:', response.status);
-                if (response.ok) {
-                    const avData = await response.json();
-                    console.log('Alpha Vantage feed exists?', !!avData.feed, 'feed length:', avData.feed?.length);
-                    if (avData.feed && Array.isArray(avData.feed)) {
-                        const parsed = avData.feed
-                            .map(item => {
-                                const dt = parseAlphaVantageTime(item.time_published);
-                                if (!dt) return null;
-                                return {
-                                    title: item.title || 'N/A',
-                                    impact: 'Medium',
-                                    time: dt.toISOString()
-                                };
-                            })
-                            .filter(e => e !== null)
-                            .map(event => {
-                                const title = event.title.toLowerCase();
-                                if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
-                                    title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
-                                    title.includes('gdp') || title.includes('employment')) {
-                                    event.impact = 'High';
-                                } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
-                                           title.includes('durable') || title.includes('trade')) {
-                                    event.impact = 'Medium';
-                                }
-                                return event;
-                            });
-                        if (parsed.length > 0) {
-                            data = parsed;
-                            sourceUsed = "Alpha Vantage";
-                            console.log('✅ Alpha Vantage provided', parsed.length, 'events');
-                        } else {
-                            console.log('ℹ️ Alpha Vantage returned no parseable events');
-                        }
-                    } else {
-                        console.log('⚠️ Alpha Vantage response missing feed:', avData);
-                    }
-                } else {
-                    console.log('⚠️ Alpha Vantage HTTP', response.status);
-                }
-            } catch (e) {
-                console.warn('❌ Alpha Vantage fetch error:', e.message);
-            }
-        } else {
-            console.log('⏭️ Skipped Alpha Vantage because data is truthy or key missing.');
-        }
-
-        // ─── Build response ────────────────────────────────
-        if (data && Array.isArray(data) && data.length > 0) {
-            apiSuccess = true;
-            rawEvents = data
-                .filter(e => e.time && new Date(e.time).getTime() > now)
-                .map(e => ({
-                    title: e.title || 'N/A',
-                    impact: e.impact || 'N/A',
-                    time: e.time || 'N/A',
-                    time_ist: e.time ? formatIST(new Date(e.time)) : 'N/A',
-                    minutes_until: e.time ? Math.round((new Date(e.time).getTime() - now) / 60000) : 'N/A'
-                }))
-                .sort((a, b) => a.minutes_until - b.minutes_until)
-                .slice(0, 20);
-        }
-    } catch (err) {
-        console.warn('Debug fetch failed:', err.message);
-    }
-
     const nowDate = new Date();
     const lastUpdate = new Date(lastNewsCheck);
 
     res.json({
         status: 'SUCCESS',
-        api_fetch_status: apiSuccess ? '✅ API reachable' : '❌ All APIs unreachable',
-        source_used: sourceUsed,
-        total_events_fetched: rawEvents.length,
+        api_fetch_status: '✅ API reachable (cached)',
+        source_used: lastSourceUsed || 'Unknown',
+        total_events_fetched: 0,
         high_news_blocked: highImpactUSDBlock,
         medium_news_blocked: mediumImpactUSDBlock,
         message: `High: ${highImpactUSDBlock ? 'ON' : 'OFF'} | Medium: ${mediumImpactUSDBlock ? 'ON' : 'OFF'}`,
@@ -2262,7 +2129,7 @@ app.get('/api/test-news', async (req, res) => {
         current_server_time_ist: formatIST(nowDate),
         last_cache_update_utc: lastUpdate.toISOString(),
         last_cache_update_ist: formatIST(lastUpdate),
-        upcoming_events: rawEvents
+        note: 'Cache is updated every hour. Last successful source: ' + lastSourceUsed
     });
 });
 
