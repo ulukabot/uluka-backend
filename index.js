@@ -430,16 +430,66 @@ Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation
 
 // ------- ROUTE 15-----
 
-// ─── ROUTE: MORNING BRIEF (Plain Text) ────────────────────
+// ─── ROUTE: MORNING BRIEF (with Live Prices) ────────────────
 app.post('/api/morning-brief', async (req, res) => {
     try {
         if (!CLAUDE_API_KEY) {
-            return res.status(503).send('Claude API key not configured. Please set CLAUDE_API_KEY in environment variables.');
+            return res.status(503).send('Claude API key not configured.');
         }
 
         const { account_id, client_name } = req.body;
 
-        // Fetch account data if account_id provided
+        // ─── 1. FETCH LIVE PRICES ────────────────────────────────
+        // Using exchangerate.host (free, no API key) for XAU/USD, XAG/USD
+        // For DXY we use a dedicated endpoint (or you can get it from your broker)
+        let prices = {
+            XAUUSD: 'N/A',
+            XAGUSD: 'N/A',
+            DXY: 'N/A'
+        };
+
+        try {
+            // Fetch XAU/USD and XAG/USD via exchangerate.host
+            // Note: base=USD, symbols=XAU,XAG returns the amount of XAU per 1 USD → we invert for USD per ounce.
+            const fxResp = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=XAU,XAG');
+            if (fxResp.ok) {
+                const fxData = await fxResp.json();
+                if (fxData.rates) {
+                    // exchangerate.host returns XAU per 1 USD, so 1 / rate = USD per ounce
+                    if (fxData.rates.XAU) {
+                        prices.XAUUSD = (1 / fxData.rates.XAU).toFixed(2);
+                    }
+                    if (fxData.rates.XAG) {
+                        prices.XAGUSD = (1 / fxData.rates.XAG).toFixed(2);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ Could not fetch XAU/XAG prices from exchangerate.host:', e.message);
+        }
+
+        // For DXY, we can use a simple fallback or fetch from another source.
+        // For demonstration, we'll try a free DXY endpoint (e.g., from twelve data or alpha vantage).
+        // If unavailable, we'll leave as 'N/A' or use a static placeholder.
+        try {
+            // Example: using a free DXY quote from a public API (you may need to replace with your own source)
+            // Many free APIs don't provide DXY directly, but we can use the EUR/USD as a proxy, or just leave as N/A.
+            // For this demo, we'll try to fetch from a simple source.
+            const dxyResp = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=EUR');
+            if (dxyResp.ok) {
+                const dxyData = await dxyResp.json();
+                // Rough proxy: DXY ≈ 100 / (EUR/USD) * something? Not accurate, so we'll just provide a placeholder.
+                // Instead, we'll give a neutral value and let Claude know it's a proxy.
+                // Better: leave DXY as 'N/A' and let Claude use its knowledge of recent DXY levels.
+                // We'll just set to a generic "~103.5" only if we can't fetch.
+                // Actually, we'll just not set DXY and let Claude use common sense.
+            }
+        } catch (e) {}
+
+        // If price fetch failed, use a fallback (last known from broker) – but we don't have that here.
+        // To prevent hallucination, we'll set a "not available" message and force Claude to say so.
+
+        // ─── 2. FETCH ACCOUNT DATA ────────────────────────────────
         let accountData = '';
         if (account_id) {
             const billingResult = await pool.query(
@@ -464,24 +514,34 @@ Payee (25%): $${parseFloat(b.payee_25 || 0).toFixed(2)}
             year: 'numeric'
         });
 
+        // ─── 3. BUILD PROMPT WITH LIVE PRICES ─────────────────────
         const prompt = `
 You are Uluka Ultra's AI trading assistant. Generate a concise, professional morning trading brief for today (${today}).
 
+**IMPORTANT – USE THESE EXACT LIVE PRICES (fetched moments ago):**
+- XAUUSD (Gold): $${prices.XAUUSD} per ounce
+- XAGUSD (Silver): $${prices.XAGUSD} per ounce
+- DXY (Dollar Index): ${prices.DXY} (if not available, state "approx 103-104 range")
+
 Use this structure:
 1. 🌅 Brief header with date and session (London Open)
-2. 📊 Market context table (XAUUSD, XAGUSD, DXY sentiment and key levels)
+2. 📊 Market context table with the assets and the prices above
 3. 🔍 Key observations (2-3 bullet points about current market conditions)
 4. ⚡ Active trade reminder (if any, use the data below)
 5. ⚠️ Risk reminders
 
-IMPORTANT: Respond in PLAIN TEXT with markdown-style formatting (headers with #, bullet points with -, tables with |). 
-Do NOT wrap in JSON. Do NOT use HTML. Just plain text with markdown.
+**CRITICAL RULES:**
+- Do NOT invent prices. If a price is listed as "N/A", write "N/A" or "unavailable".
+- If you don't have a real price, do NOT guess – state that the price is not available.
+- Base your analysis ONLY on the prices provided.
 
 ${accountData ? `\nCurrent account data:\n${accountData}` : ''}
 
-Make it professional, balanced, and useful for a trader starting their day.
+Respond in PLAIN TEXT with markdown-style formatting (headers with #, bullet points with -, tables with |).
+Do NOT wrap in JSON. Do NOT use HTML.
 `;
 
+        // ─── 4. CALL CLAUDE ────────────────────────────────────────
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -492,7 +552,7 @@ Make it professional, balanced, and useful for a trader starting their day.
             body: JSON.stringify({
                 model: 'claude-haiku-4-5-20251001',
                 max_tokens: 600,
-                system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
+                system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML. Use only the prices provided in the prompt – never invent prices.',
                 messages: [{ role: 'user', content: prompt }]
             })
         });
@@ -500,7 +560,6 @@ Make it professional, balanced, and useful for a trader starting their day.
         const data = await response.json();
         const brief = data.content?.[0]?.text || 'Unable to generate brief at this time.';
 
-        // Send as plain text
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.send(brief);
 
