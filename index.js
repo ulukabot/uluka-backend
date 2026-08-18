@@ -1986,68 +1986,104 @@ async function updateNewsCache() {
         const today = new Date().toISOString().split('T')[0];
         let data = null;
         let sourceUsed = "";
+        const now = Date.now();
 
-        // 🔥 TIER 1: n1try.com (Primary - Most Reliable)
+        // ─── SOURCE 1: n1try.com ──────────────────────────
         try {
             const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
-            const response = await fetch(url);
-            if(response.ok) {
+            const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
+            if (response.ok) {
                 data = await response.json();
-                sourceUsed = "n1try";
+                sourceUsed = "n1try.com";
             }
-        } catch (e) { /* Silently fall through to next source */ }
+        } catch (e) { /* ignore */ }
 
-        // 🔥 TIER 2: The old economic-calendar.xyz (Secondary Fallback)
+        // ─── SOURCE 2: economic-calendar.xyz ──────────────
         if (!data) {
             try {
                 const url = `https://economic-calendar.xyz/api/events?date=${today}`;
-                const response = await fetch(url);
-                if(response.ok) {
+                const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
+                if (response.ok) {
                     data = await response.json();
                     sourceUsed = "economic-calendar.xyz";
                 }
-            } catch (e) { /* Silently fall through */ }
+            } catch (e) { /* ignore */ }
         }
 
-        // Default to OFF
+        // ─── SOURCE 3: Alpha Vantage (NEWS_SENTIMENT) ─────
+        if (!data && process.env.ALPHA_VANTAGE_KEY) {
+            try {
+                const key = process.env.ALPHA_VANTAGE_KEY;
+                // We'll request news for the last 7 days, then filter USD-related events.
+                const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
+                const response = await fetch(url, { timeout: 8000 });
+                if (response.ok) {
+                    const avData = await response.json();
+                    if (avData.feed && Array.isArray(avData.feed)) {
+                        // Convert Alpha Vantage feed to our event format
+                        data = avData.feed.map(item => ({
+                            title: item.title || 'N/A',
+                            impact: item.overall_sentiment_score > 0.25 ? 'High' : (item.overall_sentiment_score < -0.25 ? 'High' : 'Medium'), // crude mapping
+                            time: new Date(item.time_published).toISOString(),
+                            // We can't get exact impact from AV, so we'll treat all as 'Medium' for safety
+                            // Better: we'll only use AV if we have no other source, and we'll mark all as 'Medium' to be safe.
+                            // To improve, we could parse the title for keywords like "FOMC", "NFP", "CPI", etc.
+                        }));
+                        // Refine impact based on keywords
+                        data = data.map(event => {
+                            const title = event.title.toLowerCase();
+                            if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
+                                title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
+                                title.includes('gdp') || title.includes('employment')) {
+                                event.impact = 'High';
+                            } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
+                                       title.includes('durable') || title.includes('trade')) {
+                                event.impact = 'Medium';
+                            }
+                            return event;
+                        });
+                        sourceUsed = "Alpha Vantage";
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        // ─── Reset block flags ──────────────────────────────
         highImpactUSDBlock = false;
         mediumImpactUSDBlock = false;
-        const now = Date.now();
 
-        // Parse data only if we actually got a valid response
+        // ─── Parse data if available ─────────────────────────
         if (data && Array.isArray(data)) {
             for (const event of data) {
-                // Handle potential null/undefined time from API differences
-                if(!event.time) continue;
-                
+                if (!event.time) continue;
                 const eventTime = new Date(event.time).getTime();
-                // Check if event is within the next 30 minutes
-                if (eventTime > now && (eventTime - now) < 1800000) {
-                    
-                    if (event.impact === 'High') {
+                if (eventTime > now && (eventTime - now) < 1800000) { // within next 30 mins
+                    const impact = (event.impact || '').toLowerCase();
+                    if (impact === 'high') {
                         highImpactUSDBlock = true;
                         console.log(`📰 HIGH EVENT CACHED (${sourceUsed}): ${event.title} at ${event.time}`);
-                    } else if (event.impact === 'Medium') {
+                    } else if (impact === 'medium') {
                         mediumImpactUSDBlock = true;
                         console.log(`📰 MEDIUM EVENT CACHED (${sourceUsed}): ${event.title} at ${event.time}`);
                     }
                 }
             }
         }
+
         lastNewsCheck = Date.now();
-        
+
+        // ─── Log summary ──────────────────────────────────────
+        if (sourceUsed) {
+            console.log(`📰 News cache updated from ${sourceUsed} | High: ${highImpactUSDBlock} | Medium: ${mediumImpactUSDBlock}`);
+        } else {
+            console.warn('⚠️ No news API reachable – news block disabled.');
+        }
+
     } catch (err) {
-        // Ultimate last-resort fallback
         highImpactUSDBlock = false;
         mediumImpactUSDBlock = false;
         lastNewsCheck = Date.now();
-        
-        // Throttle the log to once every 6 hours if EVERYTHING fails
-        const now = Date.now();
-        if (!global.lastNewsErrorTime || (now - global.lastNewsErrorTime) > 21600000) {
-            console.warn('📰 ALL NEWS APIS UNREACHABLE. EA will trade through news safely.');
-            global.lastNewsErrorTime = now;
-        }
+        console.warn('📰 News cache error:', err.message);
     }
 }
 
