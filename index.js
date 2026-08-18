@@ -428,7 +428,89 @@ Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation
     } catch(e) { res.json({ decision: 'TAKE', reason: 'Error fallback' }); }
 });
 
-// ─── ROUTE 15: HEALTH ───────────────────────────────────────
+// ------- ROUTE 15-----
+
+// ─── ROUTE: MORNING BRIEF (Plain Text) ────────────────────
+app.post('/api/morning-brief', async (req, res) => {
+    try {
+        if (!CLAUDE_API_KEY) {
+            return res.status(503).send('Claude API key not configured. Please set CLAUDE_API_KEY in environment variables.');
+        }
+
+        const { account_id, client_name } = req.body;
+
+        // Fetch account data if account_id provided
+        let accountData = '';
+        if (account_id) {
+            const billingResult = await pool.query(
+                `SELECT current_balance, net_profit, payee_25 FROM billing WHERE account_id = $1`,
+                [account_id]
+            );
+            if (billingResult.rows.length > 0) {
+                const b = billingResult.rows[0];
+                accountData = `
+Account: ${account_id}
+Balance: $${parseFloat(b.current_balance || 0).toFixed(2)}
+Net Profit: $${parseFloat(b.net_profit || 0).toFixed(2)}
+Payee (25%): $${parseFloat(b.payee_25 || 0).toFixed(2)}
+`;
+            }
+        }
+
+        const today = new Date().toLocaleDateString('en-GB', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+        });
+
+        const prompt = `
+You are Uluka Ultra's AI trading assistant. Generate a concise, professional morning trading brief for today (${today}).
+
+Use this structure:
+1. 🌅 Brief header with date and session (London Open)
+2. 📊 Market context table (XAUUSD, XAGUSD, DXY sentiment and key levels)
+3. 🔍 Key observations (2-3 bullet points about current market conditions)
+4. ⚡ Active trade reminder (if any, use the data below)
+5. ⚠️ Risk reminders
+
+IMPORTANT: Respond in PLAIN TEXT with markdown-style formatting (headers with #, bullet points with -, tables with |). 
+Do NOT wrap in JSON. Do NOT use HTML. Just plain text with markdown.
+
+${accountData ? `\nCurrent account data:\n${accountData}` : ''}
+
+Make it professional, balanced, and useful for a trader starting their day.
+`;
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'x-api-key': CLAUDE_API_KEY,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'claude-haiku-4-5-20251001',
+                max_tokens: 600,
+                system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
+                messages: [{ role: 'user', content: prompt }]
+            })
+        });
+
+        const data = await response.json();
+        const brief = data.content?.[0]?.text || 'Unable to generate brief at this time.';
+
+        // Send as plain text
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.send(brief);
+
+    } catch (error) {
+        console.error('❌ Morning brief error:', error.message);
+        res.status(500).send('Unable to generate morning brief. Please try again later.');
+    }
+});
+
+// ─── ROUTE 16: HEALTH ───────────────────────────────────────
 app.get('/health', (req, res) => res.send('OK'));
 
 // ============================================================
