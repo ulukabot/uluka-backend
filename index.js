@@ -2051,43 +2051,6 @@ async function updateNewsCache() {
         console.warn('📰 News cache error:', err.message);
     }
 }
-
-        // ─── Reset flags ──────────────────────────────────────────
-        highImpactUSDBlock = false;
-        mediumImpactUSDBlock = false;
-
-        // ─── Check events within next 30 mins ─────────────────────
-        for (const event of data) {
-            if (!event.time) continue;
-            const eventTime = new Date(event.time).getTime();
-            if (eventTime > now && (eventTime - now) < 1800000) {
-                const impact = (event.impact || '').toUpperCase();
-                if (impact === 'HIGH' || impact === 'HIGH IMPACT EXPECTED') {
-                    highImpactUSDBlock = true;
-                    console.log(`📰 HIGH EVENT (${sourceUsed}): ${event.title} at ${event.time}`);
-                } else if (impact === 'MEDIUM' || impact === 'MEDIUM IMPACT EXPECTED') {
-                    mediumImpactUSDBlock = true;
-                    console.log(`📰 MEDIUM EVENT (${sourceUsed}): ${event.title} at ${event.time}`);
-                }
-            }
-        }
-
-        lastNewsCheck = Date.now();
-
-        if (sourceUsed) {
-            lastSourceUsed = sourceUsed;
-            console.log(`📰 News cache updated from ${sourceUsed} | High: ${highImpactUSDBlock} | Medium: ${mediumImpactUSDBlock}`);
-        } else {
-            console.warn('⚠️ No news data – block disabled.');
-        }
-
-    } catch (err) {
-        highImpactUSDBlock = false;
-        mediumImpactUSDBlock = false;
-        lastNewsCheck = Date.now();
-        console.warn('📰 News cache error:', err.message);
-    }
-}
 // ─── API: Test News Status ──────────────────────────────────
 app.get('/api/test-news', async (req, res) => {
     const formatIST = (dateObj) => {
