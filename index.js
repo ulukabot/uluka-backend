@@ -2192,6 +2192,41 @@ app.get('/api/admin/ai-evaluation', async (req, res) => {
 async function generateMorningBrief(accountId = null, clientName = null) {
     if (!CLAUDE_API_KEY) return '⚠️ Claude API key not configured.';
 
+    // ─── FETCH LIVE PRICES ──────────────────────────────
+let prices = {
+    XAUUSD: 'N/A',
+    XAGUSD: 'N/A',
+    DXY: 'N/A'
+};
+
+// 1. Get XAU/USD from gold-api.com (free, no key)
+try {
+    const goldResp = await fetch('https://api.gold-api.com/price/XAU', { timeout: 5000 });
+    if (goldResp.ok) {
+        const goldData = await goldResp.json();
+        if (goldData.price) {
+            prices.XAUUSD = goldData.price.toFixed(2);
+        }
+    }
+} catch (e) {
+    console.warn('⚠️ Gold API failed:', e.message);
+}
+
+// 2. Get XAG/USD from exchangerate.host (fallback for silver)
+try {
+    const fxResp = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=XAG', { timeout: 5000 });
+    if (fxResp.ok) {
+        const fxData = await fxResp.json();
+        if (fxData.rates && fxData.rates.XAG) {
+            prices.XAGUSD = (1 / fxData.rates.XAG).toFixed(2);
+        }
+    }
+} catch (e) {
+    console.warn('⚠️ Silver API failed:', e.message);
+}
+
+// 3. DXY – leave as 'N/A'
+
     let accountData = '';
     if (accountId) {
         const billingResult = await pool.query(
@@ -2219,21 +2254,29 @@ Payee (25%): $${parseFloat(b.payee_25 || 0).toFixed(2)}
     const prompt = `
 You are Uluka Ultra's AI trading assistant. Generate a concise, professional morning trading brief for today (${today}).
 
+**IMPORTANT – USE THESE EXACT LIVE PRICES (fetched moments ago):**
+- XAUUSD (Gold): $${prices.XAUUSD} per ounce
+- XAGUSD (Silver): $${prices.XAGUSD} per ounce
+- DXY (Dollar Index): ${prices.DXY} (if not available, state "approx 103-104 range")
+
 Use this structure:
 1. 🌅 Brief header with date and session (London Open)
-2. 📊 Market context table (XAUUSD, XAGUSD, DXY sentiment and key levels)
+2. 📊 Market context table with the assets and the prices above
 3. 🔍 Key observations (2-3 bullet points about current market conditions)
 4. ⚡ Active trade reminder (if any, use the data below)
 5. ⚠️ Risk reminders
 
-IMPORTANT: Respond in PLAIN TEXT with markdown-style formatting (headers with #, bullet points with -, tables with |). 
-Do NOT wrap in JSON. Do NOT use HTML. Just plain text with markdown.
+**CRITICAL RULES:**
+- Do NOT invent prices. If a price is listed as "N/A", write "N/A" or "unavailable".
+- If you don't have a real price, do NOT guess – state that the price is not available.
+- Base your analysis ONLY on the prices provided.
 
 ${accountData ? `\nCurrent account data:\n${accountData}` : ''}
 
-Make it professional, balanced, and useful for a trader starting their day.
+Make, it professional and useful for a trader, Respond in PLAIN TEXT with markdown-style formatting (headers with #, bullet points with -, tables with |).
+Do NOT wrap in JSON. Do NOT use HTML.
 `;
-
+    
     try {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
