@@ -454,49 +454,38 @@ app.post('/api/morning-brief', async (req, res) => {
         // Using exchangerate.host (free, no API key) for XAU/USD, XAG/USD
         // For DXY we use a dedicated endpoint (or you can get it from your broker)
         let prices = {
-            XAUUSD: 'N/A',
-            XAGUSD: 'N/A',
-            DXY: 'N/A'
-        };
+    XAUUSD: 'N/A',
+    XAGUSD: 'N/A',
+    DXY: 'N/A'
+};
 
-        try {
-            // Fetch XAU/USD and XAG/USD via exchangerate.host
-            // Note: base=USD, symbols=XAU,XAG returns the amount of XAU per 1 USD → we invert for USD per ounce.
-            const fxResp = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=XAU,XAG');
-            if (fxResp.ok) {
-                const fxData = await fxResp.json();
-                if (fxData.rates) {
-                    // exchangerate.host returns XAU per 1 USD, so 1 / rate = USD per ounce
-                    if (fxData.rates.XAU) {
-                        prices.XAUUSD = (1 / fxData.rates.XAU).toFixed(2);
-                    }
-                    if (fxData.rates.XAG) {
-                        prices.XAGUSD = (1 / fxData.rates.XAG).toFixed(2);
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('⚠️ Could not fetch XAU/XAG prices from exchangerate.host:', e.message);
+// 1. Get XAU/USD from gold-api.com (free, no key)
+try {
+    const goldResp = await fetch('https://api.gold-api.com/price/XAU', { timeout: 5000 });
+    if (goldResp.ok) {
+        const goldData = await goldResp.json();
+        if (goldData.price) {
+            prices.XAUUSD = goldData.price.toFixed(2);
         }
+    }
+} catch (e) {
+    console.warn('⚠️ Gold API failed:', e.message);
+}
 
-        // For DXY, we can use a simple fallback or fetch from another source.
-        // For demonstration, we'll try a free DXY endpoint (e.g., from twelve data or alpha vantage).
-        // If unavailable, we'll leave as 'N/A' or use a static placeholder.
-        try {
-            // Example: using a free DXY quote from a public API (you may need to replace with your own source)
-            // Many free APIs don't provide DXY directly, but we can use the EUR/USD as a proxy, or just leave as N/A.
-            // For this demo, we'll try to fetch from a simple source.
-            const dxyResp = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=EUR');
-            if (dxyResp.ok) {
-                const dxyData = await dxyResp.json();
-                // Rough proxy: DXY ≈ 100 / (EUR/USD) * something? Not accurate, so we'll just provide a placeholder.
-                // Instead, we'll give a neutral value and let Claude know it's a proxy.
-                // Better: leave DXY as 'N/A' and let Claude use its knowledge of recent DXY levels.
-                // We'll just set to a generic "~103.5" only if we can't fetch.
-                // Actually, we'll just not set DXY and let Claude use common sense.
-            }
-        } catch (e) {}
+// 2. Get XAG/USD from exchangerate.host (fallback for silver)
+try {
+    const fxResp = await fetch('https://api.exchangerate.host/latest?base=USD&symbols=XAG', { timeout: 5000 });
+    if (fxResp.ok) {
+        const fxData = await fxResp.json();
+        if (fxData.rates && fxData.rates.XAG) {
+            prices.XAGUSD = (1 / fxData.rates.XAG).toFixed(2);
+        }
+    }
+} catch (e) {
+    console.warn('⚠️ Silver API failed:', e.message);
+}
 
+// 3. DXY – leave as 'N/A'
         // If price fetch failed, use a fallback (last known from broker) – but we don't have that here.
         // To prevent hallucination, we'll set a "not available" message and force Claude to say so.
 
