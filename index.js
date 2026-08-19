@@ -2347,6 +2347,15 @@ app.get('/api/test-brief', async (req, res) => {
     }
 });
 
+// ─── Debug: Check if FINNHUB_API_KEY is set ──────────────
+app.get('/debug-key', (req, res) => {
+    const key = process.env.FINNHUB_API_KEY;
+    res.json({
+        hasKey: !!key,
+        keyLength: key ? key.length : 0,
+        keyPrefix: key ? key.substring(0, 6) : 'none'
+    });
+});
 
 // ─── START NEWS CACHE ──────────────────────────────────────
 updateNewsCache(); // Run once on startup
