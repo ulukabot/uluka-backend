@@ -7,19 +7,9 @@ const express = require('express');
 const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
 
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
-
-function parseAlphaVantageTime(timeStr) {
-    if (!timeStr || timeStr.length < 15) return null;
-    const year = parseInt(timeStr.substring(0, 4));
-    const month = parseInt(timeStr.substring(4, 6)) - 1;
-    const day = parseInt(timeStr.substring(6, 8));
-    const hour = parseInt(timeStr.substring(9, 11));
-    const min = parseInt(timeStr.substring(11, 13));
-    const sec = parseInt(timeStr.substring(13, 15));
-    return new Date(Date.UTC(year, month, day, hour, min, sec));
-}
 
 // ─── JSON PARSE ERROR HANDLER ──────────────────────────────
 app.use((err, req, res, next) => {
@@ -1976,111 +1966,65 @@ app.get('/api/equity/:account', async (req, res) => {
     }
 });
 
-// ─── BACKGROUND NEWS CACHING (Neutral data source) ──────────────
-let highImpactUSDBlock = false; // Separate flag for High
-let mediumImpactUSDBlock = false; // Separate flag for Medium
+// ─── BACKGROUND NEWS CACHING (Finnhub Only) ──────────────
+let highImpactUSDBlock = false;
+let mediumImpactUSDBlock = false;
 let lastNewsCheck = 0;
 let lastSourceUsed = "None";
 
 async function updateNewsCache() {
     try {
         const today = new Date().toISOString().split('T')[0];
-        let data = null;
-        let sourceUsed = "";
         const now = Date.now();
 
-        // ─── SOURCE 1: n1try.com ──────────────────────────
-        try {
-            const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
-            const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
-            if (response.ok) {
-                data = await response.json();
-                sourceUsed = "n1try.com";
-            }
-        } catch (e) { /* ignore */ }
+        let data = [];
+        let sourceUsed = "";
 
-        // ─── SOURCE 2: economic-calendar.xyz ──────────────
-        if (!data) {
+        // ─── FINNHUB ECONOMIC CALENDAR ──────────────────────────
+        if (process.env.FINNHUB_API_KEY) {
             try {
-                const url = `https://economic-calendar.xyz/api/events?date=${today}`;
-                const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
+                const url = `https://finnhub.io/api/v1/calendar/economic?from=${today}&to=${today}&token=${process.env.FINNHUB_API_KEY}`;
+                const response = await fetch(url, { timeout: 8000 });
                 if (response.ok) {
-                    data = await response.json();
-                    sourceUsed = "economic-calendar.xyz";
+                    const result = await response.json();
+                    if (result.economicCalendar && Array.isArray(result.economicCalendar)) {
+                        data = result.economicCalendar
+                            .filter(event => {
+                                const country = (event.country || '').toUpperCase();
+                                return country === 'US' || country === 'USD';
+                            })
+                            .map(event => ({
+                                title: event.event || 'N/A',
+                                impact: (event.impact || '').toUpperCase(),
+                                time: new Date(event.eventTime * 1000).toISOString()
+                            }));
+                        sourceUsed = "Finnhub";
+                        console.log(`✅ Finnhub: ${data.length} USD events for ${today}`);
+                    }
                 }
-            } catch (e) { /* ignore */ }
-        }
-
-        // ─── SOURCE 3: Alpha Vantage (with time parser) ──
-if (!data && process.env.ALPHA_VANTAGE_KEY) {
-    try {
-        const key = process.env.ALPHA_VANTAGE_KEY;
-        const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=50&apikey=${key}`;
-        const response = await fetch(url, { timeout: 8000 });
-        if (response.ok) {
-            const avData = await response.json();
-            // Check for rate limit or error message
-            if (avData.Information && avData.Information.includes('rate limit')) {
-                console.warn('⚠️ Alpha Vantage rate limit reached – skipping.');
-            } else if (avData.feed && Array.isArray(avData.feed)) {
-                // ✅ Set sourceUsed immediately – we got a valid feed, even if empty
-                sourceUsed = "Alpha Vantage";
-                
-                const parsed = avData.feed
-                    .map(item => {
-                        const dt = parseAlphaVantageTime(item.time_published);
-                        if (!dt) return null;
-                        return {
-                            title: item.title || 'N/A',
-                            impact: 'Medium',
-                            time: dt.toISOString()
-                        };
-                    })
-                    .filter(e => e !== null)
-                    .map(event => {
-                        const title = event.title.toLowerCase();
-                        if (title.includes('fomc') || title.includes('interest rate') || title.includes('fed') ||
-                            title.includes('nonfarm') || title.includes('cpi') || title.includes('inflation') ||
-                            title.includes('gdp') || title.includes('employment')) {
-                            event.impact = 'High';
-                        } else if (title.includes('jobless') || title.includes('retail') || title.includes('housing') ||
-                                   title.includes('durable') || title.includes('trade')) {
-                            event.impact = 'Medium';
-                        }
-                        return event;
-                    });
-                
-                // Only set data if there are upcoming events (to possibly block trades)
-                if (parsed.length > 0) {
-                    data = parsed;
-                }
-                // If parsed is empty, data stays null – that's fine, no events to block.
-                console.log(`ℹ️ Alpha Vantage feed fetched (${parsed.length} upcoming events in next 30 mins).`);
+            } catch (e) {
+                console.warn('⚠️ Finnhub error:', e.message);
             }
+        } else {
+            console.warn('⚠️ FINNHUB_API_KEY not set – news block disabled.');
         }
-    } catch (e) {
-        console.warn('Alpha Vantage fetch error:', e.message);
-    }
-}
 
-        // ─── Reset block flags ──────────────────────────────
+        // ─── Reset flags ──────────────────────────────────────────
         highImpactUSDBlock = false;
         mediumImpactUSDBlock = false;
 
-        // ─── Parse data if available ─────────────────────────
-        if (data && Array.isArray(data)) {
-            for (const event of data) {
-                if (!event.time) continue;
-                const eventTime = new Date(event.time).getTime();
-                if (eventTime > now && (eventTime - now) < 1800000) { // within next 30 mins
-                    const impact = (event.impact || '').toLowerCase();
-                    if (impact === 'high') {
-                        highImpactUSDBlock = true;
-                        console.log(`📰 HIGH EVENT CACHED (${sourceUsed}): ${event.title} at ${event.time}`);
-                    } else if (impact === 'medium') {
-                        mediumImpactUSDBlock = true;
-                        console.log(`📰 MEDIUM EVENT CACHED (${sourceUsed}): ${event.title} at ${event.time}`);
-                    }
+        // ─── Check events within next 30 mins ─────────────────────
+        for (const event of data) {
+            if (!event.time) continue;
+            const eventTime = new Date(event.time).getTime();
+            if (eventTime > now && (eventTime - now) < 1800000) {
+                const impact = event.impact;
+                if (impact === 'HIGH') {
+                    highImpactUSDBlock = true;
+                    console.log(`📰 HIGH EVENT: ${event.title} at ${event.time}`);
+                } else if (impact === 'MEDIUM') {
+                    mediumImpactUSDBlock = true;
+                    console.log(`📰 MEDIUM EVENT: ${event.title} at ${event.time}`);
                 }
             }
         }
@@ -2091,7 +2035,7 @@ if (!data && process.env.ALPHA_VANTAGE_KEY) {
             lastSourceUsed = sourceUsed;
             console.log(`📰 News cache updated from ${sourceUsed} | High: ${highImpactUSDBlock} | Medium: ${mediumImpactUSDBlock}`);
         } else {
-            console.warn('⚠️ No news API reachable – news block disabled.');
+            console.warn('⚠️ No news data – block disabled.');
         }
 
     } catch (err) {
@@ -2102,6 +2046,7 @@ if (!data && process.env.ALPHA_VANTAGE_KEY) {
     }
 }
 
+// ─── API: Test News Status ──────────────────────────────────
 app.get('/api/test-news', async (req, res) => {
     const formatIST = (dateObj) => {
         return new Intl.DateTimeFormat('en-GB', {
@@ -2117,8 +2062,8 @@ app.get('/api/test-news', async (req, res) => {
 
     res.json({
         status: 'SUCCESS',
-        api_fetch_status: '✅ API reachable (cached)',
-        source_used: lastSourceUsed || 'Unknown',
+        api_fetch_status: lastSourceUsed !== 'None' ? '✅ API reachable (cached)' : '❌ No API key configured',
+        source_used: lastSourceUsed || 'None',
         total_events_fetched: 0,
         high_news_blocked: highImpactUSDBlock,
         medium_news_blocked: mediumImpactUSDBlock,
@@ -2127,7 +2072,7 @@ app.get('/api/test-news', async (req, res) => {
         current_server_time_ist: formatIST(nowDate),
         last_cache_update_utc: lastUpdate.toISOString(),
         last_cache_update_ist: formatIST(lastUpdate),
-        note: 'Cache is updated every hour. Last successful source: ' + lastSourceUsed
+        note: 'Cache updated every hour from Finnhub. Last source: ' + lastSourceUsed
     });
 });
 
@@ -2365,20 +2310,6 @@ function scheduleMorningBrief() {
 scheduleMorningBrief();
 console.log('📅 Morning brief scheduler started (daily at 08:00 GMT)');
 
-app.get('/test-av', async (req, res) => {
-    const key = process.env.ALPHA_VANTAGE_KEY;
-    if (!key) {
-        return res.status(500).send('ALPHA_VANTAGE_KEY environment variable is not set.');
-    }
-    const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=USD&limit=10&apikey=${key}`;
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        res.json(data);
-    } catch (e) {
-        res.status(500).send('Fetch error: ' + e.message);
-    }
-});
 
 // ─── Debug: Show current news state ──────────────────────────
 app.get('/news-state', (req, res) => {
@@ -2416,10 +2347,10 @@ app.get('/api/test-brief', async (req, res) => {
     }
 });
 
-// ─── Ping Test ───────────────────────────────────────────────
-app.get('/ping', (req, res) => {
-    res.send('pong');
-});
+
+// ─── START NEWS CACHE ──────────────────────────────────────
+updateNewsCache(); // Run once on startup
+setInterval(updateNewsCache, 60 * 60 * 1000); // Refresh every hour
 
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
