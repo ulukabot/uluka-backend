@@ -2389,17 +2389,6 @@ app.get('/ping', (req, res) => {
     res.send('pong');
 });
 
-// ─── GET TEST: Morning Brief (just open in browser) ──────────
-app.get('/api/test-brief', async (req, res) => {
-    try {
-        const brief = await generateMorningBrief();
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.send(brief);
-    } catch (e) {
-        res.status(500).send('Error: ' + e.message);
-    }
-});
-
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
