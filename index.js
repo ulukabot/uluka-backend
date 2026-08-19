@@ -1980,48 +1980,84 @@ async function updateNewsCache() {
         let data = [];
         let sourceUsed = "";
 
-        // ─── FINNHUB ECONOMIC CALENDAR ──────────────────────────
-       
-
-if (process.env.FINNHUB_API_KEY) {
-    try {
-        console.log('🔑 Finnhub key found, fetching...');
-        const url = `https://finnhub.io/api/v1/calendar/economic?from=${today}&to=${today}&token=${process.env.FINNHUB_API_KEY}`;
-        const response = await fetch(url, { timeout: 8000 });
-        console.log('📡 Finnhub response status:', response.status);
-        if (response.ok) {
-            const result = await response.json();
-            console.log('📦 Finnhub result keys:', Object.keys(result));
-            if (result.economicCalendar && Array.isArray(result.economicCalendar)) {
-                const events = result.economicCalendar;
-                console.log(`📊 Raw events count: ${events.length}`);
-                // Filter and map as before
-                const filtered = events.filter(event => {
-                    const country = (event.country || '').toUpperCase();
-                    return country === 'US' || country === 'USD';
-                });
-                console.log(`🇺🇸 USD events count: ${filtered.length}`);
-                data = filtered.map(event => ({
-                    title: event.event || 'N/A',
-                    impact: (event.impact || '').toUpperCase(),
-                    time: new Date(event.eventTime * 1000).toISOString()
-                }));
-                sourceUsed = "Finnhub";
-                console.log(`✅ Finnhub: ${data.length} USD events for ${today}`);
-            } else {
-                console.log('⚠️ Finnhub: economicCalendar missing or empty');
+        // ─── SOURCE 1: n1try.com (ForexFactory events) ──────────
+        try {
+            const url = `https://n1try.com/api/forex-factory/events?date=${today}`;
+            const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
+            if (response.ok) {
+                const raw = await response.json();
+                if (Array.isArray(raw) && raw.length > 0) {
+                    data = raw;
+                    sourceUsed = "n1try.com";
+                    console.log(`✅ n1try.com: ${data.length} events for ${today}`);
+                }
             }
-        } else {
-            console.log('⚠️ Finnhub HTTP error:', response.status);
-            const text = await response.text();
-            console.log('📄 Response body:', text.substring(0, 200));
+        } catch (e) {
+            console.log('⚠️ n1try.com error:', e.message);
         }
-    } catch (e) {
-        console.warn('⚠️ Finnhub error:', e.message);
-    }
-} else {
-    console.warn('⚠️ FINNHUB_API_KEY not set – news block disabled.');
-}
+
+        // ─── SOURCE 2: economic-calendar.xyz ──────────────────────
+        if (!data || data.length === 0) {
+            try {
+                const url = `https://economic-calendar.xyz/api/events?date=${today}`;
+                const response = await fetch(url, { headers: { 'User-Agent': 'Uluka-Backend' }, timeout: 5000 });
+                if (response.ok) {
+                    const raw = await response.json();
+                    if (Array.isArray(raw) && raw.length > 0) {
+                        data = raw;
+                        sourceUsed = "economic-calendar.xyz";
+                        console.log(`✅ economic-calendar.xyz: ${data.length} events for ${today}`);
+                    }
+                }
+            } catch (e) {
+                console.log('⚠️ economic-calendar.xyz error:', e.message);
+            }
+        }
+
+        // ─── SOURCE 3: Finnhub News (Keyword filtering) ──────────
+        if ((!data || data.length === 0) && process.env.FINNHUB_API_KEY) {
+            try {
+                const key = process.env.FINNHUB_API_KEY;
+                // Fetch news from the last 7 days (max free tier allows 50 per call)
+                const url = `https://finnhub.io/api/v1/news?category=forex&minId=0&token=${key}`;
+                const response = await fetch(url, { timeout: 8000 });
+                if (response.ok) {
+                    const news = await response.json();
+                    if (Array.isArray(news) && news.length > 0) {
+                        // Keywords for USD economic events
+                        const keywords = ['fomc', 'fed', 'interest rate', 'nonfarm', 'cpi', 'inflation', 
+                                         'gdp', 'employment', 'jobless', 'retail', 'housing', 'durable',
+                                         'trade', 'manufacturing', 'ism', 'philadelphia', 'empire',
+                                         'consumer confidence', 'durable goods', 'trade balance'];
+                        // Filter for USD-related news that contains keywords
+                        const filtered = news
+                            .filter(item => {
+                                const headline = (item.headline || '').toLowerCase();
+                                const summary = (item.summary || '').toLowerCase();
+                                // Check for USD-related tickers or keywords
+                                const hasUSD = headline.includes('usd') || summary.includes('usd') ||
+                                               headline.includes('dollar') || summary.includes('dollar');
+                                if (!hasUSD) return false;
+                                // Check for economic keywords
+                                const hasKeyword = keywords.some(kw => headline.includes(kw) || summary.includes(kw));
+                                return hasKeyword;
+                            })
+                            .map(item => ({
+                                title: item.headline || 'N/A',
+                                impact: 'Medium', // Default – we don't know impact from news
+                                time: new Date(item.datetime * 1000).toISOString()
+                            }));
+                        if (filtered.length > 0) {
+                            data = filtered;
+                            sourceUsed = "Finnhub News";
+                            console.log(`✅ Finnhub News: ${data.length} USD-related events`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.log('⚠️ Finnhub News error:', e.message);
+            }
+        }
 
         // ─── Reset flags ──────────────────────────────────────────
         highImpactUSDBlock = false;
@@ -2032,13 +2068,13 @@ if (process.env.FINNHUB_API_KEY) {
             if (!event.time) continue;
             const eventTime = new Date(event.time).getTime();
             if (eventTime > now && (eventTime - now) < 1800000) {
-                const impact = event.impact;
-                if (impact === 'HIGH') {
+                const impact = (event.impact || '').toUpperCase();
+                if (impact === 'HIGH' || impact === 'HIGH IMPACT EXPECTED') {
                     highImpactUSDBlock = true;
-                    console.log(`📰 HIGH EVENT: ${event.title} at ${event.time}`);
-                } else if (impact === 'MEDIUM') {
+                    console.log(`📰 HIGH EVENT (${sourceUsed}): ${event.title} at ${event.time}`);
+                } else if (impact === 'MEDIUM' || impact === 'MEDIUM IMPACT EXPECTED') {
                     mediumImpactUSDBlock = true;
-                    console.log(`📰 MEDIUM EVENT: ${event.title} at ${event.time}`);
+                    console.log(`📰 MEDIUM EVENT (${sourceUsed}): ${event.title} at ${event.time}`);
                 }
             }
         }
@@ -2059,7 +2095,6 @@ if (process.env.FINNHUB_API_KEY) {
         console.warn('📰 News cache error:', err.message);
     }
 }
-
 // ─── API: Test News Status ──────────────────────────────────
 app.get('/api/test-news', async (req, res) => {
     const formatIST = (dateObj) => {
