@@ -1,5 +1,5 @@
 // ============================================================
-// v2.5 – Full GAS Replacement + All Missing Features 
+// v2.5 – fFull GAS Replacement + All Missing Features 
 // ULUKA ULTRA — Complete Backend with Scheduled Jobs
 // ============================================================
 
@@ -2371,6 +2371,17 @@ app.get('/force-cache', async (req, res) => {
         highImpactUSDBlock: highImpactUSDBlock,
         mediumImpactUSDBlock: mediumImpactUSDBlock
     });
+});
+
+// ─── GET TEST: Morning Brief (just open in browser) ──────────
+app.get('/api/test-brief', async (req, res) => {
+    try {
+        const brief = await generateMorningBrief();
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.send(brief);
+    } catch (e) {
+        res.status(500).send('Error: ' + e.message);
+    }
 });
 
 // ─── START ──────────────────────────────────────────────────
