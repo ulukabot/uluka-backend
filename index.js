@@ -554,19 +554,19 @@ Do NOT wrap in JSON. Do NOT use HTML.
 
         // ─── 4. CALL CLAUDE ────────────────────────────────────────
         const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'x-api-key': CLAUDE_API_KEY,
-                'anthropic-version': '2023-06-01',
-                'content-type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
-                max_tokens: 600,
-                system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML. Use only the prices provided in the prompt – never invent prices.',
-                messages: [{ role: 'user', content: prompt }]
-            })
-        });
+    method: 'POST',
+    headers: {
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
+        messages: [{ role: 'user', content: prompt }]
+    })
+});
 
         const data = await response.json();
         const brief = data.content?.[0]?.text || 'Unable to generate brief at this time.';
