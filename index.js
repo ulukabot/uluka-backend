@@ -1633,25 +1633,38 @@ app.post('/', async (req, res) => {
             return res.status(429).send('RATE_LIMITED');
         }
 
-        // ─── 1. BILLING_SYNC ───────────────────────────────────
-        if (type === 'BILLING_SYNC') {
-            if (!d.account) return res.status(400).send('MISSING_ACCOUNT');
-            const existing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [d.account]);
-            if (existing.rows[0]) {
-                await pool.query(
-                    `UPDATE billing SET current_balance = $1, net_profit = $2, payee_25 = $3, last_sync = NOW() WHERE account_id = $4`,
-                    [parseFloat(d.balance || 0), parseFloat(d.balance || 0) - existing.rows[0].start_balance, Math.max(0, (parseFloat(d.balance || 0) - existing.rows[0].start_balance) * 0.25), d.account]
-                );
-            } else {
-                await pool.query(
-                    `INSERT INTO billing (account_id, client_name, start_balance, current_balance, net_profit, payee_25, status, initial_equity, dd_percent, payee_limit, last_sync, broker) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
-                    [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), '0.00%', DEFAULT_PAYEE_LIMIT, d.broker || '']
-                );
-            }
-            const billing = await pool.query('SELECT status FROM billing WHERE account_id = $1', [d.account]);
-            if (billing.rows[0] && billing.rows[0].status === 'PAUSED') return res.send('PAUSED');
-            return res.send('SUCCESS');
-        }
+       // ─── 1. BILLING_SYNC ───────────────────────────────────
+if (type === 'BILLING_SYNC') {
+    if (!d.account) return res.status(400).send('MISSING_ACCOUNT');
+    const existing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [d.account]);
+    if (existing.rows[0]) {
+        await pool.query(
+            `UPDATE billing SET 
+                current_balance = $1, 
+                net_profit = $2, 
+                payee_25 = $3, 
+                dd_percent = $4, 
+                last_sync = NOW() 
+            WHERE account_id = $5`,
+            [
+                parseFloat(d.balance || 0),
+                parseFloat(d.balance || 0) - existing.rows[0].start_balance,
+                Math.max(0, (parseFloat(d.balance || 0) - existing.rows[0].start_balance) * 0.25),
+                d.dd_percent || '0.00%',
+                d.account
+            ]
+        );
+    } else {
+        await pool.query(
+            `INSERT INTO billing (account_id, client_name, start_balance, current_balance, net_profit, payee_25, status, initial_equity, dd_percent, payee_limit, last_sync, broker) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
+            [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), d.dd_percent || '0.00%', DEFAULT_PAYEE_LIMIT, d.broker || '']
+        );
+    }
+    const billing = await pool.query('SELECT status FROM billing WHERE account_id = $1', [d.account]);
+    if (billing.rows[0] && billing.rows[0].status === 'PAUSED') return res.send('PAUSED');
+    return res.send('SUCCESS');
+}
 
         // ─── 2. OPEN_POSITIONS ──────────────────────────────────
         if (type === 'OPEN_POSITIONS') {
