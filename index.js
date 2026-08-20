@@ -615,7 +615,7 @@ app.get('/api/admin/clients', async (req, res) => {
                 b.net_profit AS profit,
                 b.payee_25,
                 b.dd_percent AS dd,
-                GREATEST(0, 100 - COALESCE(CAST(REPLACE(b.dd_percent, '%', '') AS NUMERIC), 0) * 10) AS health,
+                GREATEST(0, 100 - COALESCE(CAST(REPLACE(b.dd_percent, '%', '') AS NUMERIC), 0) * 1) AS health,
                 COALESCE(
                     (SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id AND pnl > 0) * 100.0 /
                     NULLIF((SELECT COUNT(*) FROM trade_log WHERE account_id = l.account_id), 0),
