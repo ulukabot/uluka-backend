@@ -217,8 +217,8 @@ app.get('/sync', (req, res) => {
     res.json({ 
         kill_switch: 'OFF', 
         multiplier: 1.0, 
-        min_confidence: 65,
-        high_news_block: highImpactUSDBlock ? 'ON' : 'OFF',  // Separate flags
+        min_confidence: 0,   // <-- set to 0 to disable cloud override
+        high_news_block: highImpactUSDBlock ? 'ON' : 'OFF',
         medium_news_block: mediumImpactUSDBlock ? 'ON' : 'OFF'
     });
 });
