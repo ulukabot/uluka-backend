@@ -209,7 +209,7 @@ app.post('/validate', async (req, res) => {
 
 // ─── ROUTE 3: POST /sync ────────────────────────────────────
 app.post('/sync', (req, res) => {
-    res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 65, news_filter: 'ON' });
+    res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 0, news_filter: 'ON' });
 });
 
 // ─── ROUTE 4: GET /sync ─────────────────────────────────────
