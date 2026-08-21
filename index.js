@@ -2406,36 +2406,34 @@ app.get('/api/ai/uluka-code', async (req, res) => {
         const path = require('path');
         const sourceDir = path.join(__dirname, 'uluka-source');
 
-        if (!fs.existsSync(sourceDir)) {
-            return res.status(404).json({ error: 'Source directory not found' });
-        }
-
-        // ─── Read all files (flat structure) ──────────────────────
-        function readAllFiles(dir) {
-            const result = [];
-            const items = fs.readdirSync(dir);
-            for (const item of items) {
-                const fullPath = path.join(dir, item);
-                const stat = fs.statSync(fullPath);
-                if (stat.isDirectory()) {
-                    result.push(...readAllFiles(fullPath));
-                } else {
-                    const ext = path.extname(item).toLowerCase();
-                    const textExts = ['.mqh', '.mq5', '.mq4', '.html', '.js', '.css', '.json', '.txt', '.md', '.h', '.cpp', '.jpg', '.png'];
-                    if (textExts.includes(ext)) {
-                        const content = fs.readFileSync(fullPath, 'utf8');
-                        result.push({ filename: item, extension: ext, size: content.length, content });
+        // ─── Read all files from uluka-source ─────────────────────
+        let files = [];
+        if (fs.existsSync(sourceDir)) {
+            function readAllFiles(dir) {
+                const result = [];
+                const items = fs.readdirSync(dir);
+                for (const item of items) {
+                    const fullPath = path.join(dir, item);
+                    const stat = fs.statSync(fullPath);
+                    if (stat.isDirectory()) {
+                        result.push(...readAllFiles(fullPath));
                     } else {
-                        result.push({ filename: item, extension: ext, size: stat.size, note: 'Binary file' });
+                        const ext = path.extname(item).toLowerCase();
+                        const textExts = ['.mqh', '.mq5', '.mq4', '.html', '.js', '.css', '.json', '.txt', '.md', '.h', '.cpp'];
+                        if (textExts.includes(ext)) {
+                            const content = fs.readFileSync(fullPath, 'utf8');
+                            result.push({ filename: item, extension: ext, size: content.length, content });
+                        } else {
+                            result.push({ filename: item, extension: ext, size: stat.size, note: 'Binary file' });
+                        }
                     }
                 }
+                return result;
             }
-            return result;
+            files = readAllFiles(sourceDir);
         }
 
-        const files = readAllFiles(sourceDir);
-
-        // ─── Live data ──────────────────────────────────────────────
+        // ─── Live data: clients, stats, trades, positions ──────
         const clientsResult = await pool.query(`
             SELECT 
                 l.client_name AS name,
@@ -2488,6 +2486,7 @@ app.get('/api/ai/uluka-code', async (req, res) => {
             total_trades_this_week: clients.reduce((s, c) => s + c.trades_this_week, 0)
         };
 
+        // ─── Recent Trades ─────────────────────────────────────────
         const tradesResult = await pool.query(`
             SELECT account_id, symbol, action, price, lot, pnl, result, strategy, time, client_name
             FROM trade_log
@@ -2495,55 +2494,72 @@ app.get('/api/ai/uluka-code', async (req, res) => {
             LIMIT 10
         `);
         const recentTrades = tradesResult.rows.map(row => ({
-            ...row,
+            account_id: row.account_id || 'N/A',
+            client_name: row.client_name || 'Unknown',
+            symbol: row.symbol || '—',
+            action: row.action || '—',
             price: parseFloat(row.price || 0),
             lot: parseFloat(row.lot || 0),
             pnl: parseFloat(row.pnl || 0),
+            result: row.result || '—',
+            strategy: row.strategy || '—',
             time: row.time ? row.time.toISOString() : ''
         }));
 
+        // ─── Open Positions ────────────────────────────────────────
         const openPosResult = await pool.query(`
             SELECT account_id, symbol, direction, lot, open_price, pips, floating_pnl, strategy, ticket
             FROM open_positions
             ORDER BY account_id
         `);
         const openPositions = openPosResult.rows.map(row => ({
-            ...row,
+            account_id: row.account_id || 'N/A',
+            symbol: row.symbol || '—',
+            direction: row.direction || '—',
             lot: parseFloat(row.lot || 0),
             open_price: parseFloat(row.open_price || 0),
             pips: parseFloat(row.pips || 0),
-            floating_pnl: parseFloat(row.floating_pnl || 0)
+            floating_pnl: parseFloat(row.floating_pnl || 0),
+            strategy: row.strategy || '—',
+            ticket: row.ticket || '—'
         }));
+
+        // ─── System status ─────────────────────────────────────────
+        const systemStatus = {
+            version: '2.5',
+            environment: process.env.NODE_ENV || 'production',
+            news_filter: {
+                high_impact_block: highImpactUSDBlock || false,
+                medium_impact_block: mediumImpactUSDBlock || false
+            },
+            claude_configured: !!CLAUDE_API_KEY,
+            telegram_configured: !!TELEGRAM_BOT_TOKEN,
+            database_connected: true,
+            uptime_seconds: Math.floor(process.uptime())
+        };
 
         // ─── Response ──────────────────────────────────────────────
         res.json({
             success: true,
             timestamp: new Date().toISOString(),
-            stats,
-            clients,
-            recent_trades,
-            open_positions,
+            stats: stats,
+            clients: clients,
+            recent_trades: recentTrades,
+            open_positions: openPositions,
             codebase: {
                 total_files: files.length,
-                files
+                files: files
             },
-            system: {
-                version: '2.5',
-                environment: process.env.NODE_ENV || 'production',
-                news_filter: {
-                    high_impact_block: highImpactUSDBlock || false,
-                    medium_impact_block: mediumImpactUSDBlock || false
-                },
-                claude_configured: !!CLAUDE_API_KEY,
-                telegram_configured: !!TELEGRAM_BOT_TOKEN,
-                database_connected: true,
-                uptime_seconds: Math.floor(process.uptime())
-            }
+            system: systemStatus
         });
 
     } catch (error) {
         console.error('❌ /api/ai/uluka-code error:', error.message);
-        res.status(500).json({ success: false, error: error.message, timestamp: new Date().toISOString() });
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
     }
 });
 
