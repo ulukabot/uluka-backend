@@ -793,8 +793,10 @@ app.post('/api/login', async (req, res) => {
         const daysLeft = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
         
         // 🔥 FIXED: Removed undefined variables (stats, clients, etc.)
+               // 🔥 FIXED: Removed undefined variables (stats, clients, etc.)
         res.json({
             success: true,
+            ok: true,  // <--- ADD THIS LINE
             client_name: row.client_name,
             subscription: row.subscription,
             expiry: row.expires_on,
