@@ -789,32 +789,17 @@ app.post('/api/login', async (req, res) => {
         if (row.status !== 'ACTIVE') {
             return res.status(403).json({ ok: false, error: 'Licence is not active' });
         }
-        const expiryDate = row.expires_on;
+                const expiryDate = row.expires_on;
         const daysLeft = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24));
+        
+        // 🔥 FIXED: Removed undefined variables (stats, clients, etc.)
         res.json({
-    success: true,
-    timestamp: new Date().toISOString(),
-    stats: stats,
-    clients: clients,
-    recent_trades: recentTrades,   // explicit mapping
-    open_positions: openPositions, // explicit mapping
-    codebase: {
-        total_files: files.length,
-        files: files
-    },
-    system: {
-        version: '2.5',
-        environment: process.env.NODE_ENV || 'production',
-        news_filter: {
-            high_impact_block: highImpactUSDBlock || false,
-            medium_impact_block: mediumImpactUSDBlock || false
-        },
-        claude_configured: !!CLAUDE_API_KEY,
-        telegram_configured: !!TELEGRAM_BOT_TOKEN,
-        database_connected: true,
-        uptime_seconds: Math.floor(process.uptime())
-    }
-});
+            success: true,
+            client_name: row.client_name,
+            subscription: row.subscription,
+            expiry: row.expires_on,
+            days_left: daysLeft
+        });
     } catch (err) {
         console.error('🔥 /api/login error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
