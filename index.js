@@ -2652,9 +2652,10 @@ async function sendMonthlyReport(accountId) {
 // ═══════════════════════════════════════════════════════════
 
 app.all('/cron/weekly-emails', async (req, res) => {
-  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+ const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+if (incomingSecret !== process.env.CRON_SECRET) {
     return res.status(401).send('Unauthorized');
-  }
+}
   try {
     const clients = await pool.query(
       "SELECT DISTINCT account_id FROM licences WHERE status = 'ACTIVE' AND account_id IS NOT NULL"
@@ -2672,9 +2673,10 @@ app.all('/cron/weekly-emails', async (req, res) => {
 });
 
 app.all('/cron/onboarding-check', async (req, res) => {
-  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+  const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+if (incomingSecret !== process.env.CRON_SECRET) {
     return res.status(401).send('Unauthorized');
-  }
+}
   try {
     const result = await pool.query(`
       SELECT account_id, creation_date
@@ -2696,9 +2698,7 @@ app.all('/cron/onboarding-check', async (req, res) => {
 });
 
 app.all('/cron/payment-reminders', async (req, res) => {
-  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
-    return res.status(401).send('Unauthorized');
-  }
+  v
   try {
     const clients = await pool.query(
       "SELECT account_id FROM licences WHERE status = 'ACTIVE' AND subscription LIKE '%PAYE%'"
@@ -2715,9 +2715,10 @@ app.all('/cron/payment-reminders', async (req, res) => {
 });
 
 app.all('/cron/monthly-reports', async (req, res) => {
-  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+  const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+if (incomingSecret !== process.env.CRON_SECRET) {
     return res.status(401).send('Unauthorized');
-  }
+}
   if (new Date().getUTCDate() !== 1) {
     return res.json({ ok: true, skipped: 'Not 1st of month' });
   }
