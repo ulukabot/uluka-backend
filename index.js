@@ -2432,6 +2432,35 @@ async function sendEmail({ to, subject, htmlBody, textBody, attachments = [] }) 
   }
 }
 
+function emailWrapper(preheader, bodyHtml) {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#060D1A;font-family:'Courier New',monospace;">
+<div style="display:none;max-height:0;overflow:hidden;color:#060D1A;">${preheader}</div>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#060D1A;">
+  <tr><td align="center" style="padding:24px 16px;">
+    <table width="540" cellpadding="0" cellspacing="0" border="0"
+           style="max-width:540px;background:#0C1830;border:1px solid #1A304A;border-radius:8px;overflow:hidden;">
+      <tr><td height="6" style="background:#F0B429;font-size:0;">&nbsp;</td></tr>
+      <tr><td style="padding:20px 28px 16px;">
+        <table width="100%"><tr>
+          <td><span style="font-size:11px;font-weight:bold;color:#FFFFFF;letter-spacing:3px;">ULUKA ULTRA</span><br>
+              <span style="font-size:8px;color:#F0B429;letter-spacing:4px;">LIVE HOOTS</span></td>
+          <td align="right"><span style="font-size:24px;">🦉</span></td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:0 28px;"><div style="height:1px;background:#1A304A;"></div></td></tr>
+      <tr><td style="padding:24px 28px;">${bodyHtml}</td></tr>
+      <tr><td style="padding:16px 28px;background:#020810;">
+        <p style="margin:0;font-size:9px;color:#334466;">@UlukaOwlbot · Automated report · Reply for support</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+}
+
 // ─── START NEWS CACHE ──────────────────────────────────────
 updateNewsCache(); // Run once on startup
 setInterval(updateNewsCache, 60 * 60 * 1000); // Refresh every hour
