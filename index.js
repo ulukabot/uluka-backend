@@ -2746,6 +2746,28 @@ app.get('/test-email', async (req, res) => {
   res.json(result);
 });
 
+// ⚠️ TEMPORARY — test route to trigger weekly emails via browser
+// Remove this route after cron jobs are confirmed working
+app.get('/test-weekly-emails', async (req, res) => {
+  try {
+    const clients = await pool.query(
+      "SELECT DISTINCT account_id FROM licences WHERE status = 'ACTIVE' AND account_id IS NOT NULL"
+    );
+    const results = [];
+    for (const row of clients.rows) {
+      const lic = await pool.query('SELECT email FROM licences WHERE account_id = $1', [row.account_id]);
+      const hasEmail = lic.rows[0]?.email ? '✅' : '❌ no email';
+      results.push({ account_id: row.account_id, email_status: hasEmail });
+      await sendWeeklyPerformanceEmail(row.account_id).catch(e =>
+        console.error(`Weekly email failed for ${row.account_id}:`, e.message)
+      );
+    }
+    res.json({ ok: true, sent: clients.rows.length, details: results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
