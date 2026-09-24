@@ -2461,6 +2461,33 @@ function emailWrapper(preheader, bodyHtml) {
 </body></html>`;
 }
 
+const emailH1 = (text, color = '#FFFFFF') =>
+  `<h1 style="margin:0 0 8px;font-size:22px;color:${color};font-family:'Courier New',monospace;">${text}</h1>`;
+
+const emailH2 = (text, color = '#8899BB') =>
+  `<h2 style="margin:20px 0 8px;font-size:10px;font-weight:normal;color:${color};letter-spacing:3px;font-family:'Courier New',monospace;">${text}</h2>`;
+
+const emailP = (text, color = '#8899BB') =>
+  `<p style="margin:0 0 14px;font-size:14px;color:${color};line-height:1.6;font-family:Arial,sans-serif;">${text}</p>`;
+
+const emailStatRow = (label, value, valueColor = '#FFFFFF') =>
+  `<tr>
+    <td style="padding:10px 14px;border-bottom:1px solid #1A304A;font-size:12px;color:#8899BB;font-family:'Courier New',monospace;">${label}</td>
+    <td style="padding:10px 14px;border-bottom:1px solid #1A304A;font-size:13px;font-weight:bold;color:${valueColor};font-family:'Courier New',monospace;text-align:right;">${value}</td>
+  </tr>`;
+
+const emailTable = (rows) =>
+  `<table width="100%" style="background:#060D1A;border:1px solid #1A304A;border-radius:6px;margin:16px 0;">${rows}</table>`;
+
+const emailBtn = (text, url, color = '#F0B429') =>
+  `<div style="margin:20px 0 8px;"><a href="${url}" style="display:inline-block;padding:14px 28px;border:1px solid ${color};border-radius:4px;font-size:12px;font-weight:bold;color:${color};font-family:'Courier New',monospace;letter-spacing:2px;text-decoration:none;">${text}</a></div>`;
+
+const emailHeroStat = (label, value, color = '#00FF88') =>
+  `<div style="background:#060D1A;border:1px solid #1A304A;border-radius:6px;padding:20px;margin:16px 0;text-align:center;">
+    <div style="font-size:9px;color:#8899BB;letter-spacing:3px;font-family:'Courier New',monospace;margin-bottom:8px;">${label}</div>
+    <div style="font-size:32px;font-weight:bold;color:${color};font-family:'Courier New',monospace;">${value}</div>
+  </div>`;
+
 // ─── START NEWS CACHE ──────────────────────────────────────
 updateNewsCache(); // Run once on startup
 setInterval(updateNewsCache, 60 * 60 * 1000); // Refresh every hour
