@@ -2876,6 +2876,36 @@ const SUPPORT_FAQ = {
   "error": `🦉 <b>EA Error — Quick Checklist</b>\n\n1. Check MT5 Journal tab.\n2. Whitelist WebRequest URLs in MT5 Options → Expert Advisors.\n3. Confirm licence key exactly (no spaces).\n4. Contact @WiseOwlUluka if it says ACCOUNT_MISMATCH.`,
 };
 
+// Dedicated send function for the SUPPORT bot (uses SUPPORT_BOT_TOKEN)
+async function sendSupportReply(chatId, text) {
+  const token = process.env.SUPPORT_BOT_TOKEN;
+  if (!token || !chatId) {
+    console.error('❌ SUPPORT_BOT_TOKEN missing or chatId empty');
+    return false;
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      console.error(`❌ Support bot send failed: ${data.description}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`❌ Support bot send error: ${err.message}`);
+    return false;
+  }
+}
+
 function buildSupportSystemPrompt(clientData) {
   return `You are the official AI support assistant for Uluka Ultra, an automated MT5 forex trading EA.
 
@@ -3134,11 +3164,11 @@ async function handleTelegramUpdate(update) {
 
     const clientData = await getClientByTelegramId(chatId);
 
-    // Layer 1: commands
+       // Layer 1: commands
     if (text.startsWith('/')) {
       const reply = await handleSupportCommand(chatId, text, clientData);
       if (reply) {
-        await sendToTelegram(chatId, reply);
+        await sendSupportReply(chatId, reply);
         return;
       }
     }
@@ -3146,20 +3176,20 @@ async function handleTelegramUpdate(update) {
     // Layer 2: FAQ keyword match
     const faqReply = matchFAQ(text);
     if (faqReply) {
-      await sendToTelegram(chatId, faqReply);
+      await sendSupportReply(chatId, faqReply);
       return;
     }
 
     // Layer 3: Claude AI
     const claudeReply = await getClaudeSupport(text, clientData);
     if (claudeReply) {
-      await sendToTelegram(chatId, claudeReply);
+      await sendSupportReply(chatId, claudeReply);
       return;
     }
 
     // Layer 4: escalate
     const esc = await escalateToAdmin(chatId, text, clientData);
-    await sendToTelegram(chatId, esc);
+    await sendSupportReply(chatId, esc);
 
   } catch (err) {
     console.error('handleTelegramUpdate error:', err.message);
