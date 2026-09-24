@@ -2698,7 +2698,10 @@ if (incomingSecret !== process.env.CRON_SECRET) {
 });
 
 app.all('/cron/payment-reminders', async (req, res) => {
-  v
+  const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+  if (incomingSecret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
   try {
     const clients = await pool.query(
       "SELECT account_id FROM licences WHERE status = 'ACTIVE' AND subscription LIKE '%PAYE%'"
