@@ -3176,6 +3176,46 @@ app.post('/telegram-webhook', async (req, res) => {
   );
 });
 
+// ⚠️ TEMPORARY — diagnostic for Telegram delivery
+app.get('/debug-telegram', async (req, res) => {
+  const testId = req.query.chat_id || ADMIN_CHAT_ID;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const results = {
+    token_set: !!token,
+    token_prefix: token ? token.substring(0, 12) + '...' : 'MISSING',
+    admin_chat_id: ADMIN_CHAT_ID,
+    testing_chat_id: testId,
+  };
+
+  // Test 1 — is the token valid?
+  try {
+    const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const meData = await meRes.json();
+    results.getMe = meData.ok ? `✅ @${meData.result.username}` : `❌ ${meData.description}`;
+  } catch (e) {
+    results.getMe = `❌ ${e.message}`;
+  }
+
+  // Test 2 — can we send to the chat ID?
+  try {
+    const sendRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: testId,
+        text: '🧪 Debug test — if you see this, delivery works!',
+      }),
+    });
+    const sendData = await sendRes.json();
+    results.sendMessage = sendData.ok ? '✅ delivered' : `❌ ${sendData.description}`;
+    results.telegram_response = sendData;
+  } catch (e) {
+    results.sendMessage = `❌ ${e.message}`;
+  }
+
+  res.json(results);
+});
+
 // Test route — simulate a Telegram message
 app.get('/test-support-bot', async (req, res) => {
   const testChatId = req.query.chat_id || ADMIN_CHAT_ID;
