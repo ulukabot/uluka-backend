@@ -1150,7 +1150,8 @@ app.get('/admin/generate', (req, res) => {
         const client_name = document.getElementById('client_name').value.trim();
         const subscription = document.getElementById('subscription').value;
         const expires_on = document.getElementById('expires_on').value;
-        const equity_cap = parseFloat(document.getElementById('equity_cap').value) || 0;
+                const equity_cap = parseFloat(document.getElementById('equity_cap').value) || 0;
+        const email = document.getElementById('email').value.trim();
         const admin_secret = document.getElementById('admin_secret').value.trim();
 
         const resultDiv = document.getElementById('result');
