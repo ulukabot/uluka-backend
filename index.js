@@ -12,15 +12,11 @@ const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
 
 // ═══════════════════════════════════════════════════════════
-// BREVO EMAIL SERVICE — replaces GAS GmailApp
+// BREVO EMAIL SERVICE — uses built-in fetch (no npm install)
 // ═══════════════════════════════════════════════════════════
-const { BrevoClient } = require('@getbrevo/brevo');
-
-const brevo = new BrevoClient({
-  apiKey: process.env.BREVO_API_KEY,
-  timeoutInSeconds: 30,
-  maxRetries: 3,
-});
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const SENDER_EMAIL  = process.env.SENDER_EMAIL;
+const SENDER_NAME   = process.env.SENDER_NAME || 'Uluka Ultra';
 
 // ─── JSON PARSE ERROR HANDLER ──────────────────────────────
 app.use((err, req, res, next) => {
@@ -2400,34 +2396,39 @@ app.get('/debug-key', (req, res) => {
 });
 
 /**
- * Send a transactional email via Brevo.
- * Replaces: GmailApp.sendEmail() from GAS
+ * Send a transactional email via Brevo (fetch-based, no SDK needed)
  */
-async function sendEmail({ to, subject, htmlBody, textBody, attachments = [] }) {
+async function sendEmail({ to, subject, htmlBody, textBody }) {
+  if (!BREVO_API_KEY || !SENDER_EMAIL) {
+    console.error('❌ Brevo credentials missing. Check Railway variables.');
+    return { ok: false, error: 'Missing credentials' };
+  }
   try {
-    const result = await brevo.transactionalEmails.sendTransacEmail({
-      sender: {
-        name: process.env.SENDER_NAME || 'Uluka Ultra',
-        email: process.env.SENDER_EMAIL,
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
-      to: [{ email: to }],
-      subject: subject,
-      htmlContent: htmlBody,
-      textContent: textBody || htmlBody.replace(/<[^>]+>/g, ''),
-      attachment: attachments,
+      body: JSON.stringify({
+        sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+        to: [{ email: to }],
+        subject: subject,
+        htmlContent: htmlBody,
+        textContent: textBody || htmlBody.replace(/<[^>]+>/g, '')
+      })
     });
-
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`❌ Brevo error: ${response.status} - ${JSON.stringify(errorData)}`);
+      return { ok: false, error: `HTTP ${response.status}` };
+    }
+    const result = await response.json();
     console.log(`📧 Email sent to ${to} | Message ID: ${result.messageId}`);
     return { ok: true, messageId: result.messageId };
-
   } catch (err) {
-    if (err.constructor.name === 'UnauthorizedError') {
-      console.error('❌ Brevo: Invalid API key');
-    } else if (err.constructor.name === 'TooManyRequestsError') {
-      console.error('❌ Brevo: Rate limit hit — daily quota may be exhausted');
-    } else {
-      console.error(`❌ Brevo error: ${err.statusCode} ${err.message}`);
-    }
+    console.error(`❌ Brevo fetch error: ${err.message}`);
     return { ok: false, error: err.message };
   }
 }
