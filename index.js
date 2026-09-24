@@ -1127,8 +1127,11 @@ app.get('/admin/generate', (req, res) => {
         <label>Expiry Date *</label>
         <input type="date" id="expires_on" required>
 
-        <label>Equity Cap ($)</label>
+                <label>Equity Cap ($)</label>
         <input type="number" id="equity_cap" placeholder="0 (no cap)" value="0">
+
+        <label>Client Email (for reports)</label>
+        <input type="email" id="email" placeholder="client@example.com">
 
         <label>Admin Secret *</label>
         <input type="password" id="admin_secret" placeholder="Your ADMIN_SECRET from Railway" required>
