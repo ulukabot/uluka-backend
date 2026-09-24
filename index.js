@@ -2493,6 +2493,253 @@ const emailHeroStat = (label, value, color = '#00FF88') =>
 updateNewsCache(); // Run once on startup
 setInterval(updateNewsCache, 60 * 60 * 1000); // Refresh every hour
 
+// ═══════════════════════════════════════════════════════════
+// EMAIL SEQUENCES
+// ═══════════════════════════════════════════════════════════
+
+async function sendWeeklyPerformanceEmail(accountId) {
+  const billing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [accountId]);
+  const lic = await pool.query('SELECT * FROM licences WHERE account_id = $1', [accountId]);
+  if (!billing.rows[0] || !lic.rows[0]) return;
+  const b = billing.rows[0];
+  const email = lic.rows[0].email;
+  if (!email) return;
+
+  const netProfit = parseFloat(b.net_profit || 0);
+  const profitStr = (netProfit >= 0 ? '+' : '') + '$' + Math.abs(netProfit).toFixed(2);
+  const color = netProfit >= 0 ? '#00FF88' : '#FF5555';
+
+  const body = `
+    ${emailH1(`Good evening ${lic.rows[0].client_name},`)}
+    ${emailP('Here is your weekly Uluka Ultra performance summary.')}
+    ${emailHeroStat("WEEK'S REALIZED P&L", profitStr, color)}
+    ${emailH2('ACCOUNT SUMMARY')}
+    ${emailTable(
+      emailStatRow('Current Balance', '$' + parseFloat(b.current_balance || 0).toFixed(2)) +
+      emailStatRow('Net Profit', profitStr, color) +
+      emailStatRow('Plan', lic.rows[0].subscription || 'PAYE')
+    )}
+    ${emailBtn('🦉 View Dashboard', 'https://uluka-dashboard.netlify.app')}
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: `🦉 Weekly Report · ${profitStr} · Uluka Ultra`,
+    htmlBody: emailWrapper('Your weekly results are in.', body),
+  });
+}
+
+async function sendOnboardingEmail(accountId, dayNumber) {
+  const lic = await pool.query('SELECT * FROM licences WHERE account_id = $1', [accountId]);
+  if (!lic.rows[0] || !lic.rows[0].email) return;
+  const email = lic.rows[0].email;
+  const name = lic.rows[0].client_name || 'Trader';
+
+  const templates = {
+    1: {
+      subject: '🦉 Welcome to Uluka Ultra — Your EA is live',
+      body: `
+        ${emailH1(`Welcome to the nest, ${name}.`)}
+        ${emailP('Uluka Ultra is now live on your account. The AI is watching every tick across all major sessions.')}
+        ${emailH2('WHAT HAPPENS FROM HERE')}
+        ${emailTable(
+          emailStatRow('Trade alerts', 'Card fires to Telegram when EA enters') +
+          emailStatRow('SL updates', 'Break-even notification') +
+          emailStatRow('EOD report', 'Daily summary at 23:50 UTC')
+        )}
+        ${emailBtn('🎧 Contact Support', 'https://t.me/UlukaOwlbot', '#B46FFF')}
+      `,
+    },
+    3: {
+      subject: '🦉 Day 3 with Uluka Ultra — Quick check-in',
+      body: `
+        ${emailH1(`3 days in, ${name}.`)}
+        ${emailP('The EA has been running for 3 days. By now you have seen your first trade cards.')}
+        ${emailP('<strong>The EA does not trade every day.</strong> It waits for the right conditions.')}
+        ${emailBtn('🎧 Contact Support', 'https://t.me/UlukaOwlbot', '#B46FFF')}
+      `,
+    },
+    7: {
+      subject: '🦉 First Week Complete · Uluka Ultra',
+      body: `
+        ${emailH1('First week complete.')}
+        ${emailP(`Here is how your first 7 days looked, ${name}.`)}
+        ${emailP('Your weekly performance report now arrives every Friday evening automatically.')}
+        ${emailBtn('🦉 Get Uluka Ultra', 'https://t.me/WiseOwlUluka', '#F0B429')}
+      `,
+    },
+  };
+
+  const tpl = templates[dayNumber];
+  if (!tpl) return;
+
+  await sendEmail({
+    to: email,
+    subject: tpl.subject,
+    htmlBody: emailWrapper(`Day ${dayNumber} update.`, tpl.body),
+  });
+}
+
+async function sendPaymentReminder(accountId) {
+  const billing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [accountId]);
+  const lic = await pool.query('SELECT * FROM licences WHERE account_id = $1', [accountId]);
+  if (!billing.rows[0] || !lic.rows[0]) return;
+  const b = billing.rows[0];
+  const email = lic.rows[0].email;
+  if (!email) return;
+
+  const netProfit = parseFloat(b.net_profit || 0);
+  if (netProfit <= 0) return;
+
+  const paye = netProfit * 0.25;
+  const payeStr = '$' + Math.max(paye, 99).toFixed(2);
+
+  const body = `
+    ${emailH1(`Payment reminder, ${lic.rows[0].client_name}.`)}
+    ${emailP('Your PAYE payment for last week is due today.')}
+    ${emailHeroStat('AMOUNT DUE', payeStr, '#F0B429')}
+    ${emailTable(
+      emailStatRow("Week's Net Profit", '+$' + netProfit.toFixed(2), '#00FF88') +
+      emailStatRow('Platform Fee (25%)', payeStr, '#F0B429')
+    )}
+    ${emailBtn('✅ Confirm Payment', 'mailto:ulukabot@gmail.com', '#00FF88')}
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: `💰 PAYE Due Today · ${payeStr} · Uluka Ultra`,
+    htmlBody: emailWrapper(`PAYE payment of ${payeStr} due today.`, body),
+  });
+}
+
+async function sendMonthlyReport(accountId) {
+  const billing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [accountId]);
+  const lic = await pool.query('SELECT * FROM licences WHERE account_id = $1', [accountId]);
+  if (!billing.rows[0] || !lic.rows[0]) return;
+  const b = billing.rows[0];
+  const email = lic.rows[0].email;
+  if (!email) return;
+
+  const monthName = new Date().toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+
+  const body = `
+    ${emailH1(`${monthName} Report`)}
+    ${emailP(`Full monthly summary for ${lic.rows[0].client_name}.`)}
+    ${emailHeroStat("MONTH'S P&L", '$' + parseFloat(b.net_profit || 0).toFixed(2))}
+    ${emailTable(
+      emailStatRow('Opening Balance', '$' + parseFloat(b.start_balance || 0).toFixed(2)) +
+      emailStatRow('Closing Balance', '$' + parseFloat(b.current_balance || 0).toFixed(2)) +
+      emailStatRow('Net Profit', '$' + parseFloat(b.net_profit || 0).toFixed(2))
+    )}
+    ${emailBtn('🦉 Uluka Ultra Channel', 'https://t.me/WiseOwlUluka', '#F0B429')}
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: `🦉 ${monthName} Report · Uluka Ultra`,
+    htmlBody: emailWrapper(`${monthName} results inside.`, body),
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// CRON ENDPOINTS
+// ═══════════════════════════════════════════════════════════
+
+app.post('/cron/weekly-emails', async (req, res) => {
+  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  try {
+    const clients = await pool.query(
+      "SELECT DISTINCT account_id FROM licences WHERE status = 'ACTIVE' AND account_id IS NOT NULL"
+    );
+    for (const row of clients.rows) {
+      await sendWeeklyPerformanceEmail(row.account_id).catch(e =>
+        console.error(`Weekly email failed for ${row.account_id}:`, e.message)
+      );
+    }
+    res.json({ ok: true, sent: clients.rows.length });
+  } catch (err) {
+    console.error('Cron weekly-emails error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/cron/onboarding-check', async (req, res) => {
+  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  try {
+    const result = await pool.query(`
+      SELECT account_id, creation_date
+      FROM licences
+      WHERE status = 'ACTIVE' AND creation_date IS NOT NULL
+    `);
+    for (const row of result.rows) {
+      const daysSince = Math.floor((Date.now() - new Date(row.creation_date)) / 86400000);
+      if ([1, 3, 7].includes(daysSince)) {
+        await sendOnboardingEmail(row.account_id, daysSince).catch(e =>
+          console.error(`Onboarding D${daysSince} failed:`, e.message)
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/cron/payment-reminders', async (req, res) => {
+  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  try {
+    const clients = await pool.query(
+      "SELECT account_id FROM licences WHERE status = 'ACTIVE' AND subscription LIKE '%PAYE%'"
+    );
+    for (const row of clients.rows) {
+      await sendPaymentReminder(row.account_id).catch(e =>
+        console.error(`Payment reminder failed:`, e.message)
+      );
+    }
+    res.json({ ok: true, sent: clients.rows.length });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/cron/monthly-reports', async (req, res) => {
+  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  if (new Date().getUTCDate() !== 1) {
+    return res.json({ ok: true, skipped: 'Not 1st of month' });
+  }
+  try {
+    const clients = await pool.query(
+      "SELECT DISTINCT account_id FROM licences WHERE status = 'ACTIVE' AND account_id IS NOT NULL"
+    );
+    for (const row of clients.rows) {
+      await sendMonthlyReport(row.account_id).catch(e =>
+        console.error(`Monthly report failed:`, e.message)
+      );
+    }
+    res.json({ ok: true, sent: clients.rows.length });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Test route — visit in browser to verify email works
+app.get('/test-email', async (req, res) => {
+  const result = await sendEmail({
+    to: process.env.SENDER_EMAIL,
+    subject: '🦉 Uluka Test Email',
+    htmlBody: emailWrapper('Test', emailH1('Brevo is working!') + emailP('If you see this, email migration is complete.')),
+  });
+  res.json(result);
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
