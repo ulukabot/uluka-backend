@@ -2399,6 +2399,39 @@ app.get('/debug-key', (req, res) => {
     });
 });
 
+/**
+ * Send a transactional email via Brevo.
+ * Replaces: GmailApp.sendEmail() from GAS
+ */
+async function sendEmail({ to, subject, htmlBody, textBody, attachments = [] }) {
+  try {
+    const result = await brevo.transactionalEmails.sendTransacEmail({
+      sender: {
+        name: process.env.SENDER_NAME || 'Uluka Ultra',
+        email: process.env.SENDER_EMAIL,
+      },
+      to: [{ email: to }],
+      subject: subject,
+      htmlContent: htmlBody,
+      textContent: textBody || htmlBody.replace(/<[^>]+>/g, ''),
+      attachment: attachments,
+    });
+
+    console.log(`📧 Email sent to ${to} | Message ID: ${result.messageId}`);
+    return { ok: true, messageId: result.messageId };
+
+  } catch (err) {
+    if (err.constructor.name === 'UnauthorizedError') {
+      console.error('❌ Brevo: Invalid API key');
+    } else if (err.constructor.name === 'TooManyRequestsError') {
+      console.error('❌ Brevo: Rate limit hit — daily quota may be exhausted');
+    } else {
+      console.error(`❌ Brevo error: ${err.statusCode} ${err.message}`);
+    }
+    return { ok: false, error: err.message };
+  }
+}
+
 // ─── START NEWS CACHE ──────────────────────────────────────
 updateNewsCache(); // Run once on startup
 setInterval(updateNewsCache, 60 * 60 * 1000); // Refresh every hour
