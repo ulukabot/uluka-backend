@@ -1172,11 +1172,12 @@ app.get('/admin/generate', (req, res) => {
                     'Content-Type': 'application/json',
                     'x-admin-secret': admin_secret
                 },
-                body: JSON.stringify({
+                                body: JSON.stringify({
                     client_name,
                     subscription,
                     expires_on,
-                    equity_cap
+                    equity_cap,
+                    email
                 })
             });
 
@@ -1187,10 +1188,11 @@ app.get('/admin/generate', (req, res) => {
                 resultDiv.innerHTML = \`
                     ✅ <b>Key Generated!</b><br><br>
                     <span class="key-highlight">\${data.licence.licence_key}</span><br><br>
-                    <b>Client:</b> \${data.licence.client_name}<br>
+                    <                    <b>Client:</b> \${data.licence.client_name}<br>
                     <b>Plan:</b> \${data.licence.subscription}<br>
                     <b>Expires:</b> \${data.licence.expires_on}<br>
-                    <b>Cap:</b> $\${data.licence.equity_cap}
+                    <b>Cap:</b> $\${data.licence.equity_cap}<br>
+                    <b>Email:</b> \${data.licence.email || '(not set)'}
                 \`;
             } else {
                 resultDiv.className = 'error';
