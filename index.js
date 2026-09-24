@@ -1668,6 +1668,12 @@ if (type === 'BILLING_SYNC') {
             [d.account, d.client || 'New Client', parseFloat(d.balance || 0), parseFloat(d.balance || 0), 0, 0, 'ACTIVE', parseFloat(d.balance || 0), d.dd_percent || '0.00%', DEFAULT_PAYEE_LIMIT, d.broker || '']
         );
     }
+        // ✅ FIX: Also stamp licences.last_sync so dashboards reading that table stay current
+    await pool.query(
+        'UPDATE licences SET last_sync = NOW() WHERE account_id = $1',
+        [d.account]
+    );
+
     const billing = await pool.query('SELECT status FROM billing WHERE account_id = $1', [d.account]);
     if (billing.rows[0] && billing.rows[0].status === 'PAUSED') return res.send('PAUSED');
     return res.send('SUCCESS');
