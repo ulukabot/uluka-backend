@@ -11,6 +11,17 @@ const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
 
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
 
+// ═══════════════════════════════════════════════════════════
+// BREVO EMAIL SERVICE — replaces GAS GmailApp
+// ═══════════════════════════════════════════════════════════
+const { BrevoClient } = require('@getbrevo/brevo');
+
+const brevo = new BrevoClient({
+  apiKey: process.env.BREVO_API_KEY,
+  timeoutInSeconds: 30,
+  maxRetries: 3,
+});
+
 // ─── JSON PARSE ERROR HANDLER ──────────────────────────────
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
