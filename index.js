@@ -121,7 +121,7 @@ async function handleValidation(params) {
         await sendAdminAlert(`🆕 NEW ACTIVATION\nClient: ${lic.client_name}\nAccount: ${account}\nKey: ${key}`);
     }
 
-    if (balance && account) {
+        if (balance && account) {
         const existing = await pool.query('SELECT * FROM billing WHERE account_id = $1', [account]);
         if (existing.rows[0]) {
             await pool.query(
@@ -135,6 +135,13 @@ async function handleValidation(params) {
             );
         }
     }
+
+    // ✅ FIX: Always stamp licences.last_sync on every validation request
+    // (placed outside the balance check so it fires even when balance is missing)
+    await pool.query(
+        'UPDATE licences SET last_sync = NOW() WHERE licence_key = $1',
+        [key]
+    );
 
     const d = String(new Date(lic.expires_on).getDate()).padStart(2, '0');
     const m = String(new Date(lic.expires_on).getMonth() + 1).padStart(2, '0');
