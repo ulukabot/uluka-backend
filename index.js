@@ -2651,7 +2651,7 @@ async function sendMonthlyReport(accountId) {
 // CRON ENDPOINTS
 // ═══════════════════════════════════════════════════════════
 
-app.post('/cron/weekly-emails', async (req, res) => {
+app.all('/cron/weekly-emails', async (req, res) => {
   if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
     return res.status(401).send('Unauthorized');
   }
@@ -2671,7 +2671,7 @@ app.post('/cron/weekly-emails', async (req, res) => {
   }
 });
 
-app.post('/cron/onboarding-check', async (req, res) => {
+app.all('/cron/onboarding-check', async (req, res) => {
   if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
     return res.status(401).send('Unauthorized');
   }
@@ -2695,7 +2695,7 @@ app.post('/cron/onboarding-check', async (req, res) => {
   }
 });
 
-app.post('/cron/payment-reminders', async (req, res) => {
+app.all('/cron/payment-reminders', async (req, res) => {
   if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
     return res.status(401).send('Unauthorized');
   }
@@ -2714,7 +2714,7 @@ app.post('/cron/payment-reminders', async (req, res) => {
   }
 });
 
-app.post('/cron/monthly-reports', async (req, res) => {
+app.all('/cron/monthly-reports', async (req, res) => {
   if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
     return res.status(401).send('Unauthorized');
   }
