@@ -2852,6 +2852,348 @@ app.get('/test-weekly-emails', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// SUPPORT BOT — migrated from GAS
+// ═══════════════════════════════════════════════════════════
+
+const SUPPORT_FAQ = {
+  "not trading": `🦉 <b>EA Not Trading — Common Causes</b>\n\n1. <b>Session filter</b> — EA only trades enabled sessions.\n2. <b>News window</b> — EA pauses 30-45 min before/after high-impact news.\n3. <b>Daily limit hit</b> — EA pauses until tomorrow.\n4. <b>Spread too high</b> — EA waits for tighter spread.\n5. <b>Confidence too low</b> — Market regime doesn't meet threshold.\n6. <b>No signal</b> — EA only enters when all conditions align.\n\nRun <b>/status</b> to check your EA's state. 🦉`,
+
+  "health score": `🦉 <b>Health Score Explained</b>\n\nYour health score (0–100) reflects overall account performance:\n\n• <b>Win rate</b>\n• <b>Drawdown</b>\n• <b>Daily P&L</b>\n• <b>Streak</b>\n• <b>Risk discipline</b>\n\n<b>Green 80+</b> — Excellent\n<b>Yellow 60-79</b> — Good\n<b>Red below 60</b> — Review settings`,
+
+  "renew": `🦉 <b>Renewal</b>\n\nYour subscription renews automatically 7 days before expiry. You'll receive a payment link here.\n\nTo check expiry, run <b>/status</b>.\n\nQuestions? Message @WiseOwlUluka.`,
+
+  "stop loss": `🦉 <b>Stop Loss Not Showing?</b>\n\nIn <b>Stealth Mode</b>, the broker SL shows as 0. This is intentional — the EA manages SL internally.\n\nYour position IS protected. Run <b>/status</b> to see internal levels.`,
+
+  "prop firm": `🦉 <b>Prop Firm Mode</b>\n\nEnable in EA inputs:\n• Select your firm (FTMO, FundedNext, None)\n• EA auto-sets daily/max DD/lot limits\n• Trades blocked at 80% of any limit\n\n<b>Important:</b> Verify current firm rules — they change.`,
+
+  "telegram": `🦉 <b>Not Receiving Telegram Signals?</b>\n\n1. Set <b>Personal_Chat_ID</b> in EA inputs.\n2. Start @UlukaOwlbot (send /start).\n3. Join Premium group.\n4. First signal arrives after EA opens a trade.\n\nRun <b>/status</b> to confirm.`,
+
+  "drawdown": `🦉 <b>Drawdown Protection</b>\n\nUluka has 3 layers:\n\n1. <b>Per-trade risk</b> — max % risked\n2. <b>Daily loss limit</b> — EA stops when hit\n3. <b>Floating DD guard</b> — closes all positions\n\nGuardian Angel monitors every 60s.`,
+
+  "withdraw": `🦉 <b>Withdrawals</b>\n\nYou can withdraw anytime. EA trades your live balance.\n\nDeposits/withdrawals mid-month are tracked separately so PAYE stays accurate.`,
+
+  "error": `🦉 <b>EA Error — Quick Checklist</b>\n\n1. Check MT5 Journal tab.\n2. Whitelist WebRequest URLs in MT5 Options → Expert Advisors.\n3. Confirm licence key exactly (no spaces).\n4. Contact @WiseOwlUluka if it says ACCOUNT_MISMATCH.`,
+};
+
+function buildSupportSystemPrompt(clientData) {
+  return `You are the official AI support assistant for Uluka Ultra, an automated MT5 forex trading EA.
+
+ABOUT ULUKA ULTRA:
+- Automated Expert Advisor for MT5
+- SMC (Smart Money Concepts): BOS, CHoCH, FVG, Order Blocks
+- Features: Stealth SL/TP, Guardian Angel DD monitor, Break-Even, ATR trailing, DNA Fingerprint, Health Score, Prop Firm mode (FTMO/FundedNext)
+- PAYE billing: 25% of client profits
+- Support: @WiseOwlUluka | Bot: @UlukaOwlbot
+
+CLIENT CONTEXT:
+${clientData ? `
+Name: ${clientData.name}
+Account: ${clientData.account}
+Balance: $${clientData.balance}
+Net P&L: $${clientData.netProfit}
+Plan: ${clientData.plan}
+Expires: ${clientData.expires}
+Status: ${clientData.status}
+Drawdown: ${clientData.drawdown}
+Last Sync: ${clientData.lastSync}
+` : "Client not identified — general Uluka Ultra support."}
+
+RULES:
+- Answer ONLY questions about Uluka Ultra EA, trading settings, account status, billing, Telegram signals.
+- If asked about unrelated topics, politely redirect to trading/EA topics.
+- Be concise. Max 200 words.
+- If you cannot answer, say: "I'll flag this for our team — expect a reply within 24 hours."
+- Never invent features or settings.
+- Always sign off with 🦉
+- Format with HTML tags: <b>bold</b>, no markdown.`;
+}
+
+async function getClientByTelegramId(chatId) {
+  try {
+    const lic = await pool.query('SELECT * FROM licences WHERE telegram_id = $1', [String(chatId)]);
+    if (!lic.rows[0]) return null;
+    const l = lic.rows[0];
+    const bill = await pool.query('SELECT * FROM billing WHERE account_id = $1', [l.account_id]);
+    const b = bill.rows[0] || {};
+    return {
+      name:      l.client_name || 'Client',
+      account:   l.account_id,
+      plan:      l.subscription || 'Standard',
+      expires:   l.expires_on,
+      status:    l.status,
+      balance:   parseFloat(b.current_balance || 0).toFixed(2),
+      netProfit: parseFloat(b.net_profit || 0).toFixed(2),
+      dd:        b.dd_percent || '0.00%',
+      lastSync:  b.last_sync ? new Date(b.last_sync).toLocaleString() : 'N/A',
+    };
+  } catch (err) {
+    console.error('getClientByTelegramId error:', err.message);
+    return null;
+  }
+}
+
+async function getClaudeSupport(userMessage, clientData) {
+  try {
+    if (!CLAUDE_API_KEY) return null;
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        system: buildSupportSystemPrompt(clientData),
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+    if (!res.ok) {
+      console.error('Claude support API error:', res.status);
+      return null;
+    }
+    const json = await res.json();
+    return json.content && json.content[0] ? json.content[0].text : null;
+  } catch (err) {
+    console.error('getClaudeSupport error:', err.message);
+    return null;
+  }
+}
+
+async function escalateToAdmin(chatId, userMessage, clientData) {
+  const clientInfo = clientData
+    ? `${clientData.name} (Acc: ${clientData.account})`
+    : `Unknown (Chat ID: ${chatId})`;
+  await sendAdminAlert(
+    `❓ <b>SUPPORT ESCALATION</b>\n` +
+    `<b>Client:</b> ${clientInfo}\n` +
+    `<b>Message:</b> "${userMessage}"\n\n` +
+    `Reply directly to Chat ID: <code>${chatId}</code>`
+  );
+  return `🦉 Your question has been passed to our team. You'll hear back within 24 hours.\n\nFor urgent issues, contact @WiseOwlUluka directly.`;
+}
+
+function notLinkedMessage() {
+  return `🦉 <b>Account Not Linked</b>\n\nYour Telegram ID isn't linked to a licence yet.\n\nMake sure your <b>Personal_Chat_ID</b> is set correctly in your EA inputs, then restart the EA.\n\nIf you're a new client, contact @WiseOwlUluka.`;
+}
+
+async function getResultsMessage() {
+  try {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const t = await pool.query(
+      `SELECT symbol, action, pnl, strategy FROM trade_log
+       WHERE time::date = $1 ORDER BY time DESC`,
+      [todayStr]
+    );
+    const trades = t.rows;
+    let wins = 0, losses = 0, totalPnl = 0, bestPnl = 0, bestSym = '—', worstPnl = 0, worstSym = '—';
+    trades.forEach(row => {
+      const pnl = parseFloat(row.pnl || 0);
+      totalPnl += pnl;
+      if (pnl > 0) wins++; else if (pnl < 0) losses++;
+      if (pnl > bestPnl)  { bestPnl = pnl; bestSym = row.symbol; }
+      if (pnl < worstPnl) { worstPnl = pnl; worstSym = row.symbol; }
+    });
+    const winRate = trades.length > 0 ? Math.round(wins / trades.length * 100) : 0;
+    const pnlStr = (totalPnl >= 0 ? '+' : '') + '$' + Math.abs(totalPnl).toFixed(2);
+    const pnlIcon = totalPnl >= 0 ? '🟢' : '🔴';
+    const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = today.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' IST';
+    if (trades.length === 0) {
+      return `🦉 <b>ULUKA LIVE RESULTS</b>\n📅 ${dateStr}\n\nNo trades executed today yet.\n\nThe owl is watching — hoot fires when conditions align.\n\n<i>Updated: ${timeStr}</i>`;
+    }
+    let msg = `🦉 <b>ULUKA LIVE RESULTS</b>\n📅 ${dateStr}\n━━━━━━━━━━━━━━\n📊 <b>TODAY'S PERFORMANCE</b>\n`;
+    msg += `• Trades:   <code>${trades.length}</code>\n`;
+    msg += `• Wins:     <code>${wins}</code>  |  Losses: <code>${losses}</code>\n`;
+    msg += `• Win Rate: <code>${winRate}%</code>\n`;
+    msg += `${pnlIcon} P&amp;L:    <b>${pnlStr}</b>\n`;
+    if (bestSym !== '—')  msg += `🏆 Best:    <code>${bestSym} +$${bestPnl.toFixed(2)}</code>\n`;
+    if (worstSym !== '—') msg += `📉 Worst:   <code>${worstSym} -$${Math.abs(worstPnl).toFixed(2)}</code>\n`;
+    msg += `\n<i>Live account · Updated ${timeStr}</i>\n\n💎 <b>Want Uluka trading for you?</b>\n👉 @UlukaOwlbot — PAYE model, pay only on profits.`;
+    return msg;
+  } catch (err) {
+    console.error('getResultsMessage error:', err.message);
+    return '🦉 Results temporarily unavailable. Try again shortly.';
+  }
+}
+
+async function handleSupportCommand(chatId, command, clientData) {
+  const cmd = command.toLowerCase().replace('/', '').split('@')[0].trim();
+
+  if (cmd === 'start' || cmd === 'help') {
+    const welcome = clientData
+      ? `🦉 <b>Welcome back, ${clientData.name}!</b>\n\nHere's what I can do:\n\n`
+      : `🦉 <b>Welcome to Uluka Ultra Support!</b>\n\nI don't recognise your Telegram ID yet. Make sure your <b>Personal_Chat_ID</b> is set in your EA inputs.\n\n`;
+    return welcome +
+      `/status — Your live account snapshot\n` +
+      `/balance — Current balance & P&L\n` +
+      `/health — Health score & drawdown\n` +
+      `/results — Today's live performance\n` +
+      `/pause — Pause your EA trading\n` +
+      `/resume — Resume your EA trading\n` +
+      `/renew — Subscription info\n` +
+      `/help — Show this menu\n\n` +
+      `Or just <b>type your question</b> — I'll answer instantly. 🦉`;
+  }
+
+  if (cmd === 'status') {
+    if (!clientData) return notLinkedMessage();
+    return `🦉 <b>Account Status — ${clientData.name}</b>\n\n` +
+      `<b>Account:</b> ${clientData.account}\n` +
+      `<b>Balance:</b> $${clientData.balance}\n` +
+      `<b>Net P&L:</b> $${clientData.netProfit}\n` +
+      `<b>Drawdown:</b> ${clientData.dd}\n` +
+      `<b>Plan:</b> ${clientData.plan}\n` +
+      `<b>Expires:</b> ${clientData.expires}\n` +
+      `<b>Status:</b> ${clientData.status}\n` +
+      `<b>Last Sync:</b> ${clientData.lastSync}\n\n` +
+      `Need help with something specific? Just ask. 🦉`;
+  }
+
+  if (cmd === 'balance') {
+    if (!clientData) return notLinkedMessage();
+    const pnlSign = parseFloat(clientData.netProfit) >= 0 ? '+' : '';
+    return `🦉 <b>Balance Snapshot — ${clientData.name}</b>\n\n` +
+      `<b>Current Balance:</b> $${clientData.balance}\n` +
+      `<b>Net P&L (all-time):</b> ${pnlSign}$${clientData.netProfit}\n` +
+      `<b>Last Sync:</b> ${clientData.lastSync}\n\n` +
+      `<i>Updates every 5 minutes when EA is running.</i> 🦉`;
+  }
+
+  if (cmd === 'health') {
+    if (!clientData) return notLinkedMessage();
+    return `🦉 <b>Account Health — ${clientData.name}</b>\n\n` +
+      `<b>Status:</b> ${clientData.status}\n` +
+      `<b>Drawdown:</b> ${clientData.dd}\n` +
+      `<b>Last Sync:</b> ${clientData.lastSync}\n\n` +
+      `Run /status for full snapshot. 🦉`;
+  }
+
+  if (cmd === 'pause') {
+    if (!clientData) return notLinkedMessage();
+    await pool.query("UPDATE billing SET status = 'PAUSED' WHERE account_id = $1", [clientData.account]);
+    await sendAdminAlert(`⏸ <b>EA PAUSED</b>\nClient: ${clientData.name}\nAccount: ${clientData.account}\nVia /pause command`);
+    return `⏸ <b>EA Paused</b>\n\nYour EA has been paused. No new trades will be opened.\n\nType /resume to restart trading. 🦉`;
+  }
+
+  if (cmd === 'resume') {
+    if (!clientData) return notLinkedMessage();
+    await pool.query("UPDATE billing SET status = 'ACTIVE' WHERE account_id = $1", [clientData.account]);
+    await sendAdminAlert(`▶️ <b>EA RESUMED</b>\nClient: ${clientData.name}\nAccount: ${clientData.account}\nVia /resume command`);
+    return `▶️ <b>EA Resumed</b>\n\nYour EA is now active. Trading resumes on the next hoot. 🦉`;
+  }
+
+  if (cmd === 'renew') {
+    if (!clientData) return notLinkedMessage();
+    return `🦉 <b>Subscription — ${clientData.name}</b>\n\n` +
+      `<b>Plan:</b> ${clientData.plan}\n` +
+      `<b>Expires:</b> ${clientData.expires}\n\n` +
+      `Renewal links sent 7 days before expiry.\n\nTo renew early, contact @WiseOwlUluka. 🦉`;
+  }
+
+  if (cmd === 'results') {
+    return await getResultsMessage();
+  }
+
+  return null;
+}
+
+function matchFAQ(text) {
+  const lower = text.toLowerCase();
+  for (const [keyword, answer] of Object.entries(SUPPORT_FAQ)) {
+    if (lower.includes(keyword)) return answer;
+  }
+  return null;
+}
+
+async function handleTelegramUpdate(update) {
+  try {
+    const msg = update.message || update.edited_message;
+    if (!msg) return;
+
+    // New member joined
+    if (msg.new_chat_members && msg.new_chat_members.length > 0) {
+      const chatName = msg.chat.title || msg.chat.id;
+      const chatId = msg.chat.id.toString();
+      if (FREE_GROUP_ID && chatId === FREE_GROUP_ID) {
+        msg.new_chat_members.forEach(member => {
+          const name = [member.first_name, member.last_name].filter(Boolean).join(' ');
+          const username = member.username ? '@' + member.username : 'no username';
+          sendAdminAlert(`👋 <b>New Free Group Member</b>\n👤 ${name} (${username})\n🆔 <code>${member.id}</code>\n📢 ${chatName}`);
+        });
+      }
+      return;
+    }
+
+    if (!msg.text) return;
+    const chatId = msg.chat.id.toString();
+    const text   = msg.text.trim();
+
+    const clientData = await getClientByTelegramId(chatId);
+
+    // Layer 1: commands
+    if (text.startsWith('/')) {
+      const reply = await handleSupportCommand(chatId, text, clientData);
+      if (reply) {
+        await sendToTelegram(chatId, reply);
+        return;
+      }
+    }
+
+    // Layer 2: FAQ keyword match
+    const faqReply = matchFAQ(text);
+    if (faqReply) {
+      await sendToTelegram(chatId, faqReply);
+      return;
+    }
+
+    // Layer 3: Claude AI
+    const claudeReply = await getClaudeSupport(text, clientData);
+    if (claudeReply) {
+      await sendToTelegram(chatId, claudeReply);
+      return;
+    }
+
+    // Layer 4: escalate
+    const esc = await escalateToAdmin(chatId, text, clientData);
+    await sendToTelegram(chatId, esc);
+
+  } catch (err) {
+    console.error('handleTelegramUpdate error:', err.message);
+  }
+}
+
+// ─── Telegram webhook receiver ───
+app.post('/telegram-webhook', async (req, res) => {
+  // Respond to Telegram IMMEDIATELY so it doesn't retry
+  res.status(200).send('OK');
+  // Then process in background
+  handleTelegramUpdate(req.body).catch(err =>
+    console.error('Webhook processing error:', err.message)
+  );
+});
+
+// Test route — simulate a Telegram message
+app.get('/test-support-bot', async (req, res) => {
+  const testChatId = req.query.chat_id || ADMIN_CHAT_ID;
+  const testText = req.query.text || '/start';
+  try {
+    await handleTelegramUpdate({
+      message: {
+        chat: { id: testChatId, type: 'private' },
+        text: testText,
+        from: { id: testChatId },
+      },
+    });
+    res.json({ ok: true, sent_to: testChatId, message: testText });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
