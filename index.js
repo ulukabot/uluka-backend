@@ -2747,6 +2747,86 @@ app.get('/test-email', async (req, res) => {
   res.json(result);
 });
 
+// ═══════════════════════════════════════════════════════════
+// UNIFIED CRON DISPATCHER — runs every hour, dispatches jobs
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/dispatcher', async (req, res) => {
+  const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+  if (incomingSecret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  const now = new Date();
+  const utcHour   = now.getUTCHours();
+  const utcDay    = now.getUTCDay();   // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+  const utcDate   = now.getUTCDate();
+  const results   = {};
+
+  try {
+    // Friday 22:xx UTC → weekly performance emails
+    if (utcDay === 5 && utcHour === 22) {
+      const clients = await pool.query(
+        "SELECT DISTINCT account_id FROM licences WHERE status = 'ACTIVE' AND account_id IS NOT NULL"
+      );
+      for (const row of clients.rows) {
+        await sendWeeklyPerformanceEmail(row.account_id).catch(e =>
+          console.error(`Weekly email failed for ${row.account_id}:`, e.message)
+        );
+      }
+      results.weekly_emails = clients.rows.length;
+    }
+
+    // Every day at 09:xx UTC → onboarding check
+    if (utcHour === 9) {
+      const clients = await pool.query(
+        "SELECT account_id, creation_date FROM licences WHERE status = 'ACTIVE' AND creation_date IS NOT NULL"
+      );
+      let onboardingSent = 0;
+      for (const row of clients.rows) {
+        const daysSince = Math.floor((Date.now() - new Date(row.creation_date)) / 86400000);
+        if ([1, 3, 7].includes(daysSince)) {
+          await sendOnboardingEmail(row.account_id, daysSince).catch(e =>
+            console.error(`Onboarding D${daysSince} failed:`, e.message)
+          );
+          onboardingSent++;
+        }
+      }
+      results.onboarding = onboardingSent;
+    }
+
+    // Monday 09:xx UTC → payment reminders
+    if (utcDay === 1 && utcHour === 9) {
+      const clients = await pool.query(
+        "SELECT account_id FROM licences WHERE status = 'ACTIVE' AND subscription LIKE '%PAYE%'"
+      );
+      for (const row of clients.rows) {
+        await sendPaymentReminder(row.account_id).catch(e =>
+          console.error(`Payment reminder failed:`, e.message)
+        );
+      }
+      results.payment_reminders = clients.rows.length;
+    }
+
+    // 1st of month 08:xx UTC → monthly reports
+    if (utcDate === 1 && utcHour === 8) {
+      const clients = await pool.query(
+        "SELECT DISTINCT account_id FROM licences WHERE status = 'ACTIVE' AND account_id IS NOT NULL"
+      );
+      for (const row of clients.rows) {
+        await sendMonthlyReport(row.account_id).catch(e =>
+          console.error(`Monthly report failed:`, e.message)
+        );
+      }
+      results.monthly_reports = clients.rows.length;
+    }
+
+    res.json({ ok: true, utcHour, utcDay, utcDate, results });
+  } catch (err) {
+    console.error('Dispatcher error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ⚠️ TEMPORARY — test route to trigger weekly emails via browser
 // Remove this route after cron jobs are confirmed working
 app.get('/test-weekly-emails', async (req, res) => {
