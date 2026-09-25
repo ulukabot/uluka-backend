@@ -2688,6 +2688,47 @@ Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation
             }
         }
 
+      // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
+if (type === 'TRADE_SIGNAL') {
+    if ((d.source || '').toUpperCase() !== 'MASTER') {
+        console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
+        return res.send('NON_MASTER_BLOCKED');
+    }
+    try {
+        const { premiumMsg, freeMsg } = buildHootMessages(d);
+        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
+        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
+
+        // ─── Render + send OPEN cards ───
+        const riskPct = (d.risk || d.riskPercent || '').toString().replace('%', '');
+        const cardData = {
+            action: d.action, symbol: d.symbol, strategy: d.strategy,
+            session: d.session, conf: d.confidence || d.conf || d.confidence_score,
+            entry: d.entry, sl: d.sl,
+            tp1: d.tp1, rr1: d.rr1,
+            tp2: d.tp2, rr2: d.rr2,
+            tp3: d.tp3, rr3: d.rr3,
+            lot: d.lot, risk_pct: riskPct,
+            ticket: d.ticket, time: d.time
+        };
+        const premiumImg = await renderCard(buildOpenCardHTML(cardData));
+        if (premiumImg && PREMIUM_GROUP_ID) {
+            await sendPhotoToChat(PREMIUM_GROUP_ID, premiumImg,
+                `⭐ <b>PREMIUM HOOT — ${d.symbol} ${d.action}</b>`);
+        }
+        const freeImg = await renderCard(buildFreeOpenCardHTML(cardData));
+        if (freeImg && FREE_GROUP_ID) {
+            await sendPhotoToChat(FREE_GROUP_ID, freeImg,
+                `🔓 <b>FREE HOOT — ${d.symbol} ${d.action}</b>`);
+        }
+
+        return res.send('HOOT_SENT');
+    } catch(e) {
+        console.error('🔥 TRADE_SIGNAL error:', e.message);
+        return res.status(500).send('ERROR');
+    }
+}
+
         // ─── 5. ActivationAlert ──────────────────────────────────
 if (type === 'ActivationAlert') {
     console.log('📢 Activation alert received from:', d.source, d.client);
@@ -2726,24 +2767,6 @@ if (type === 'ActivationAlert') {
     }
     return res.send('OK');
 }
-
-        // ─── 6. TRADE_CLOSE ─────────────────────────────────────
-        if (type === 'TRADE_CLOSE') {
-    // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
-    if ((d.source || '').toUpperCase() !== 'MASTER') {
-        console.log('📥 Blocked non-MASTER TRADE_CLOSE:', d.source);
-        return res.send('NON_MASTER_BLOCKED');
-    }
-            try {
-                const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: $${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
-                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
-                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
-                return res.send('CLOSE_OK');
-            } catch(e) {
-                console.error('🔥 TRADE_CLOSE error:', e.message);
-                return res.status(500).send('ERROR');
-            }
-        }
 
                        // ─── 6. TRADE_CLOSE ───────────────────────────────────────
 if (type === 'TRADE_CLOSE') {
