@@ -863,6 +863,19 @@ app.get('/test-paye-archive-card', async (req, res) => {
   res.json({ ok: sent, chatId, cardSize: img.byteLength });
 });
 
+// ─── TEST: Run PAYE archive manually (safe — no DB writes) ───
+app.get('/test-paye-archive', async (req, res) => {
+  const archiveImg = await renderCard(buildPAYEArchiveCardHTML({
+    paye_amount: '78.10', week_profit: '+$312.40',
+    week_dates: new Date().toDateString(), week_label: 'Weekly PAYE',
+    total_trades: 5, client_amount: '$234.30',
+    next_period: 'Next Friday'
+  }));
+  if (!archiveImg) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(ADMIN_CHAT_ID, archiveImg, '🧪 PAYE archive test (live)');
+  res.json({ ok: sent });
+});
+
 app.get('/test-paye-billing-card', async (req, res) => {
   const chatId = req.query.chat || ADMIN_CHAT_ID;
   const img = await renderCard(buildPAYEBillingCardHTML({
