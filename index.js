@@ -53,6 +53,172 @@ const FREE_GROUP_ID      = process.env.FREE_GROUP_ID      || '';
 const CLAUDE_API_KEY     = process.env.CLAUDE_API_KEY     || '';
 const ADMIN_SECRET       = process.env.ADMIN_SECRET       || 'default-secret-change-me';
 
+// ═══════════════════════════════════════════════════════════
+// SNAPOTTER CARD RENDERER
+// ═══════════════════════════════════════════════════════════
+const SNAPOTTER_URL     = process.env.SNAPOTTER_URL     || '';
+const SNAPOTTER_API_KEY = process.env.SNAPOTTER_API_KEY || '';
+
+async function renderCard(htmlContent) {
+  if (!SNAPOTTER_URL || !SNAPOTTER_API_KEY) {
+    console.error('❌ SnapOtter credentials missing.');
+    return null;
+  }
+  try {
+    const url = `${SNAPOTTER_URL}/api/v1/tools/image/html-to-image`;
+    console.log('🎨 renderCard POST →', url);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SNAPOTTER_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        html: htmlContent,
+        format: 'png',
+        viewportWidth: 800,
+        viewportHeight: 400,
+        deviceScaleFactor: 2
+      }),
+    });
+
+    const responseText = await response.text();
+    console.log('🎨 SnapOtter status:', response.status);
+    console.log('🎨 SnapOtter body:', responseText.substring(0, 500));
+
+    if (!response.ok) {
+      throw new Error(`SnapOtter ${response.status}: ${responseText.substring(0, 200)}`);
+    }
+
+    let data;
+    try { data = JSON.parse(responseText); } catch(e) {
+      throw new Error('SnapOtter response not JSON: ' + responseText.substring(0, 200));
+    }
+
+    // Try every possible field SnapOtter might use
+    const downloadUrl =
+      data.downloadUrl ||
+      data.url ||
+      data.outputUrl ||
+      data.file ||
+      data.result ||
+      data.path ||
+      (data.data && (data.data.downloadUrl || data.data.url)) ||
+      null;
+
+    if (!downloadUrl) {
+      throw new Error('No download URL in response: ' + JSON.stringify(data).substring(0, 300));
+    }
+
+    const fullUrl = downloadUrl.startsWith('http')
+      ? downloadUrl
+      : `${SNAPOTTER_URL}${downloadUrl}`;
+    console.log('🎨 Fetching PNG →', fullUrl);
+
+    const imageResponse = await fetch(fullUrl, {
+      headers: { 'Authorization': `Bearer ${SNAPOTTER_API_KEY}` }
+    });
+    if (!imageResponse.ok) {
+      throw new Error(`Image fetch failed: ${imageResponse.status}`);
+    }
+    const buffer = await imageResponse.arrayBuffer();
+    console.log('✅ Card rendered | size:', buffer.byteLength, 'bytes');
+    return buffer;
+
+  } catch (error) {
+    console.error('❌ renderCard error:', error.message);
+    return null;
+  }
+}
+
+// ─── HTML TEMPLATE — Trade Open Card ─────────────────────
+function buildOpenCardHTML(d) {
+  const isBuy = (d.action || '').toUpperCase() === 'BUY';
+  const accent = isBuy ? '#00FF88' : '#FF5555';
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">PREMIUM HOOT</div>
+        </div>
+        <div style="font-size:32px;color:#F0B429;">🦉</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
+        <div style="flex:1;">
+          <div style="font-size:26px;font-weight:bold;color:${accent};">
+            ${d.action || ''} ${d.symbol || ''}
+          </div>
+          <div style="font-size:14px;color:#8899BB;margin-top:8px;">
+            Strategy: <span style="color:#FFFFFF;">${d.strategy || '—'}</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Session: <span style="color:#FFFFFF;">${d.session || '—'}</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Confidence: <span style="color:#F0B429;">${d.conf || '—'}%</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Lot: <span style="color:#FFFFFF;">${d.lot || '—'}</span> |
+            Risk: <span style="color:#FFFFFF;">${d.risk_pct || '—'}%</span>
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
+          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">PRICE LEVELS</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Entry</span>
+            <span style="color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#FF5555;">SL</span>
+            <span style="color:#FF5555;font-weight:bold;">${d.sl || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#00FF88;">TP1</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr1 || '—'}</span></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#00FF88;">TP2</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.tp2 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr2 || '—'}</span></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#00FF88;">TP3</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.tp3 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr3 || '—'}</span></span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:10px;margin-top:14px;">
+        <span>Ticket: ${d.ticket || '—'}</span>
+        <span>${d.time || new Date().toISOString().slice(0,16).replace('T',' ')}</span>
+      </div>
+    </div>
+  `;
+}
+
+// ─── TEST ENDPOINT ────────────────────────────────────────
+app.get('/test-card', async (req, res) => {
+  const sample = {
+    action: 'BUY', symbol: 'XAUUSD', strategy: 'Order Block',
+    session: 'London', conf: '78', entry: '3350.45', sl: '3345.00',
+    tp1: '3360.00', rr1: '1.8', tp2: '3370.00', rr2: '3.5',
+    tp3: '3385.00', rr3: '6.3', lot: '0.05', risk_pct: '0.5',
+    ticket: '12345678', time: '25 Sep 2026 14:30'
+  };
+  const html = buildOpenCardHTML(sample);
+  const image = await renderCard(html);
+  if (image) {
+    res.set('Content-Type', 'image/png');
+    res.send(Buffer.from(image));
+  } else {
+    res.status(500).send('Card generation failed — check Railway logs');
+  }
+});
+
 // ─── Helpers ───────────────────────────────────────────────
 async function sendToTelegram(chatId, text, keyboard) {
     if (!TELEGRAM_BOT_TOKEN || !chatId) return false;
