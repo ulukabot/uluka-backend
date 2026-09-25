@@ -3813,15 +3813,7 @@ async function generateInvoiceForAccount(accountId) {
     const chatId     = lic.rows[0].telegram_id;
     const plan       = (lic.rows[0].subscription || 'PAYE').toUpperCase();
 
-        // 2. Get billing snapshot (for balance display only)
-    const bill = await pool.query(
-      'SELECT start_balance, current_balance FROM billing WHERE account_id = $1',
-      [accountId]
-    );
-    if (!bill.rows[0]) {
-      console.log(`Invoice: no billing for ${accountId}`);
-      return null;
-    }
+        
        // 2. Get billing snapshot with period tracking
     const bill = await pool.query(
       'SELECT start_balance, current_balance, period_start_balance FROM billing WHERE account_id = $1',
