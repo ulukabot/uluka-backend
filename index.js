@@ -362,6 +362,188 @@ function buildSLUpdateCardHTML(d) {
   `;
 }
 
+// ─── HTML TEMPLATE — Activation Card ──────────────────────
+function buildActivationCardHTML(d) {
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">NEW ACTIVATION</div>
+        </div>
+        <div style="font-size:32px;color:#00FF88;">🟢</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
+        <div style="flex:1;">
+          <div style="font-size:24px;font-weight:bold;color:#F0B429;">
+            ${d.client_name || d.client || 'New Client'}
+          </div>
+          <div style="font-size:14px;color:#8899BB;margin-top:10px;">
+            Account: <span style="color:#FFFFFF;">${d.account_id || '—'}</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Broker: <span style="color:#FFFFFF;">${d.broker || '—'}</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Symbol: <span style="color:#FFFFFF;">${d.symbol || '—'}</span>
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
+          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">ACCOUNT</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Balance</span>
+            <span style="color:#FFFFFF;font-weight:bold;">$${d.balance || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Equity</span>
+            <span style="color:#FFFFFF;font-weight:bold;">$${d.equity || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#8899BB;">Plan</span>
+            <span style="color:#F0B429;font-weight:bold;">${d.plan || 'PAYE'}</span>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:10px;">
+        ✅ EA is now live · ${d.time || ''}
+      </div>
+    </div>
+  `;
+}
+
+// ─── HTML TEMPLATE — Admin EOD Card ───────────────────────
+function buildAdminEODCardHTML(d) {
+  const pnl = parseFloat(d.total_pnl || 0);
+  const isProfit = pnl >= 0;
+  const accent = isProfit ? '#00FF88' : '#FF5555';
+  const pnlStr = (pnl >= 0 ? '+' : '-') + '$' + Math.abs(pnl).toFixed(2);
+  const winRate = d.trades && parseFloat(d.trades) > 0
+    ? Math.round((parseFloat(d.wins || 0) / parseFloat(d.trades)) * 100)
+    : 0;
+
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">DAILY EOD REPORT</div>
+        </div>
+        <div style="font-size:32px;color:#F0B429;">📊</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
+        <div style="flex:1;">
+          <div style="font-size:32px;font-weight:bold;color:${accent};">
+            ${pnlStr}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            ${d.date || new Date().toDateString()}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:14px;">
+            Trades: <span style="color:#FFFFFF;font-weight:bold;">${d.trades || 0}</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Win Rate: <span style="color:#00FF88;font-weight:bold;">${winRate}%</span>
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
+          <div style="font-size:10px;color:#8899BB;margin-bottom:8px;letter-spacing:2px;">PERFORMANCE</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">Wins</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.wins || 0}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">Losses</span>
+            <span style="color:#FF5555;font-weight:bold;">${d.losses || 0}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">Realized</span>
+            <span style="color:#FFFFFF;font-weight:bold;">$${d.realized || 0}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">Floating</span>
+            <span style="color:#FFFFFF;font-weight:bold;">$${d.floating || 0}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#8899BB;">Health</span>
+            <span style="color:#F0B429;font-weight:bold;">${d.health || 0}/100</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:8px;">
+        <span>Balance: $${d.balance || '—'}</span>
+        <span>Equity: $${d.equity || '—'}</span>
+      </div>
+    </div>
+  `;
+}
+
+// ─── HTML TEMPLATE — Client EOD Card ──────────────────────
+function buildClientEODCardHTML(d) {
+  const pnl = parseFloat(d.total_pnl || 0);
+  const isProfit = pnl >= 0;
+  const accent = isProfit ? '#00FF88' : '#FF5555';
+  const pnlStr = (pnl >= 0 ? '+' : '-') + '$' + Math.abs(pnl).toFixed(2);
+
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">YOUR DAILY REPORT</div>
+        </div>
+        <div style="font-size:32px;color:#F0B429;">🦉</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
+        <div style="flex:1;">
+          <div style="font-size:20px;font-weight:bold;color:#FFFFFF;">
+            ${d.client || d.client_name || 'Trader'}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
+            ${d.date || new Date().toDateString()}
+          </div>
+          <div style="font-size:36px;font-weight:bold;color:${accent};margin-top:22px;">
+            ${pnlStr}
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
+          <div style="font-size:10px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">TODAY'S SNAPSHOT</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Trades</span>
+            <span style="color:#FFFFFF;font-weight:bold;">${d.trades || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Wins</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.wins || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Balance</span>
+            <span style="color:#FFFFFF;font-weight:bold;">$${d.balance || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#8899BB;">Health</span>
+            <span style="color:#F0B429;font-weight:bold;">${d.health || '—'}/100</span>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:8px;">
+        Keep letting the owl work. 🦉
+      </div>
+    </div>
+  `;
+}
+
 // ═══════════════════════════════════════════════════════════
 // SEND PHOTO TO TELEGRAM (multipart/form-data, no npm package)
 // ═══════════════════════════════════════════════════════════
@@ -473,6 +655,48 @@ app.get('/test-sl-card', async (req, res) => {
   if (!image) return res.status(500).json({ ok: false, error: 'render failed' });
   const sent = await sendPhotoToChat(chatId, image, '🧪 SL update test');
   res.json({ ok: sent, chatId, cardSize: image.byteLength });
+});
+
+// ─── TEST: Activation card ─────────────────────────────
+app.get('/test-activation-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const img = await renderCard(buildActivationCardHTML({
+    client_name: 'John Doe', account_id: '12345678',
+    broker: 'IC Markets', symbol: 'XAUUSD',
+    balance: '2500.00', equity: '2512.40', plan: 'PAYE',
+    time: new Date().toISOString().slice(0,16).replace('T',' ')
+  }));
+  if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, img, '🧪 Activation card test');
+  res.json({ ok: sent, chatId, cardSize: img.byteLength });
+});
+
+// ─── TEST: Admin EOD card ──────────────────────────────
+app.get('/test-eod-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const img = await renderCard(buildAdminEODCardHTML({
+    date: new Date().toDateString(),
+    trades: 7, wins: 5, losses: 2, win_rate: '71',
+    realized: '124.50', floating: '-8.20',
+    total_pnl: '116.30', balance: '2616.30', equity: '2608.10',
+    health: 82
+  }));
+  if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, img, '🧪 Admin EOD card test');
+  res.json({ ok: sent, chatId, cardSize: img.byteLength });
+});
+
+// ─── TEST: Client EOD card ─────────────────────────────
+app.get('/test-client-eod-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const img = await renderCard(buildClientEODCardHTML({
+    client: 'John Doe', date: new Date().toDateString(),
+    trades: 4, wins: 3,
+    total_pnl: '47.20', balance: '2547.20', health: 79
+  }));
+  if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, img, '🧪 Client EOD card test');
+  res.json({ ok: sent, chatId, cardSize: img.byteLength });
 });
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -2260,11 +2484,43 @@ Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation
         }
 
         // ─── 5. ActivationAlert ──────────────────────────────────
-        if (type === 'ActivationAlert') {
-            console.log('📢 Activation alert received from:', d.source, d.client);
-            await sendAdminAlert(`🖥 EA ACTIVATION\n${d.text || 'Client activated'}`);
-            return res.send('OK');
+if (type === 'ActivationAlert') {
+    console.log('📢 Activation alert received from:', d.source, d.client);
+    await sendAdminAlert(`🖥 EA ACTIVATION\n${d.text || 'Client activated'}`);
+
+    // Fetch full licence + billing data for the card
+    let cardData = {
+        client_name: d.client,
+        account_id: d.account || d.account_id,
+        broker: d.broker,
+        symbol: d.symbol,
+        plan: 'PAYE',
+        balance: d.balance,
+        equity: d.equity,
+        time: d.time || new Date().toISOString().slice(0,16).replace('T',' ')
+    };
+    try {
+        const accId = d.account || d.account_id;
+        if (accId) {
+            const lic = await pool.query('SELECT client_name, subscription FROM licences WHERE account_id = $1', [accId]);
+            const bill = await pool.query('SELECT current_balance FROM billing WHERE account_id = $1', [accId]);
+            if (lic.rows[0]) {
+                cardData.client_name = lic.rows[0].client_name || cardData.client_name;
+                cardData.plan = lic.rows[0].subscription || 'PAYE';
+            }
+            if (bill.rows[0]) {
+                cardData.balance = parseFloat(bill.rows[0].current_balance || 0).toFixed(2);
+            }
         }
+    } catch(e) { console.warn('Activation data fetch:', e.message); }
+
+    const activationImg = await renderCard(buildActivationCardHTML(cardData));
+    if (activationImg && ADMIN_CHAT_ID) {
+        await sendPhotoToChat(ADMIN_CHAT_ID, activationImg,
+            `🟢 <b>NEW ACTIVATION — ${cardData.client_name}</b>`);
+    }
+    return res.send('OK');
+}
 
         // ─── 6. TRADE_CLOSE ─────────────────────────────────────
         if (type === 'TRADE_CLOSE') {
@@ -2364,29 +2620,57 @@ if (type === 'POSITION_UPDATE') {
             }
         }
 
-        // ─── 10. DAILY_EOD ─────────────────────────────────────────
-        if (type === 'DAILY_EOD') {
-            try {
-                const msg = `📊 DAILY EOD REPORT (Master)\nAccount: ${d.account_id || d.account}\nClient: ${d.client || 'Master'}\nTrades: ${d.trades}\nWins: ${d.wins}\nLosses: ${d.losses}\nWin Rate: ${d.win_rate}%\nRealized: $${d.realized}\nFloating: $${d.floating}\nTotal P&L: $${d.total_pnl}\nBalance: $${d.balance}\nEquity: $${d.equity}\nHealth: ${d.health}`;
-                if (ADMIN_CHAT_ID) await sendToTelegram(ADMIN_CHAT_ID, msg);
-                return res.send('OK');
-            } catch(e) {
-                console.error('🔥 DAILY_EOD error:', e.message);
-                return res.status(500).send('ERROR');
-            }
-        }
+        // ─── 10. DAILY_EOD ─────────────────────────────────────
+if (type === 'DAILY_EOD') {
+    try {
+        const msg = `📊 <b>DAILY EOD REPORT (Master)</b>\nAccount: ${d.account_id || d.account}\nClient: ${d.client || 'Master'}\nTrades: ${d.trades}\nWins: ${d.wins} | Losses: ${d.losses}\nWin Rate: ${d.win_rate}%\nRealized: $${d.realized}\nFloating: $${d.floating}\nTotal: <b>$${d.total_pnl}</b>\nBalance: $${d.balance}\nEquity: $${d.equity}\nHealth: ${d.health}`;
+        if (ADMIN_CHAT_ID) await sendToTelegram(ADMIN_CHAT_ID, msg);
 
-        // ─── 11. ClientEOD ─────────────────────────────────────────
-        if (type === 'ClientEOD') {
-            try {
-                const msg = `🦉 YOUR DAILY REPORT\n${d.date || ''}\nP&L: $${d.total_pnl || 0}\nBalance: $${d.balance || 0}`;
-                if (d.chat_id) await sendToTelegram(d.chat_id, msg);
-                return res.send('OK');
-            } catch(e) {
-                console.error('🔥 ClientEOD error:', e.message);
-                return res.status(500).send('ERROR');
-            }
+        // Render + send EOD card to Admin + Premium + Free
+        const eodImg = await renderCard(buildAdminEODCardHTML({
+            date: d.date || new Date().toDateString(),
+            trades: d.trades, wins: d.wins, losses: d.losses,
+            win_rate: d.win_rate, realized: d.realized, floating: d.floating,
+            total_pnl: d.total_pnl, balance: d.balance, equity: d.equity,
+            health: d.health
+        }));
+        if (eodImg) {
+            const caption = `📊 <b>EOD REPORT</b> · ${d.date || new Date().toDateString()}`;
+            if (ADMIN_CHAT_ID)     await sendPhotoToChat(ADMIN_CHAT_ID,     eodImg, caption);
+            if (PREMIUM_GROUP_ID)  await sendPhotoToChat(PREMIUM_GROUP_ID,  eodImg, caption);
+            if (FREE_GROUP_ID)     await sendPhotoToChat(FREE_GROUP_ID,     eodImg, caption);
         }
+        return res.send('OK');
+    } catch(e) {
+        console.error('🔥 DAILY_EOD error:', e.message);
+        return res.status(500).send('ERROR');
+    }
+}
+
+        // ─── 11. ClientEOD ─────────────────────────────────────
+if (type === 'ClientEOD') {
+    try {
+        const msg = `🦉 <b>YOUR DAILY REPORT</b>\n${d.date || ''}\nP&L: <b>$${d.total_pnl || 0}</b>\nBalance: $${d.balance || 0}`;
+        if (d.chat_id) await sendToTelegram(d.chat_id, msg);
+
+        // Render + send Client EOD card
+        const clientImg = await renderCard(buildClientEODCardHTML({
+            client: d.client, client_name: d.client_name,
+            date: d.date,
+            trades: d.trades, wins: d.wins,
+            total_pnl: d.total_pnl, balance: d.balance,
+            health: d.health
+        }));
+        if (clientImg && d.chat_id) {
+            await sendPhotoToChat(d.chat_id, clientImg,
+                `📊 <b>Your EOD Report — ${d.date || new Date().toDateString()}</b>`);
+        }
+        return res.send('OK');
+    } catch(e) {
+        console.error('🔥 ClientEOD error:', e.message);
+        return res.status(500).send('ERROR');
+    }
+}
 
         // ─── 12. LossPatternAlert ──────────────────────────────────
         if (type === 'LossPatternAlert') {
