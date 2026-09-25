@@ -4514,6 +4514,18 @@ app.all('/cron/dispatcher', async (req, res) => {
       results.payment_reminders = clients.rows.length;
     }
 
+        // 1st of month 00:xx UTC → reset all period balances (start new invoice period)
+    if (utcDate === 1 && utcHour === 0) {
+      await pool.query(
+        `UPDATE billing 
+         SET period_start_balance = current_balance,
+             start_balance = current_balance
+         WHERE status = 'ACTIVE'`
+      );
+      console.log('🔄 Monthly period reset — all balances snapshotted');
+      results.monthly_reset = 'ok';
+    }
+
     // 1st of month 08:xx UTC → monthly reports
     if (utcDate === 1 && utcHour === 8) {
       const clients = await pool.query(
