@@ -3795,6 +3795,377 @@ app.all('/cron/paye-archive', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// CRON: Weekly COT Intelligence Report
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/cot-report', async (req, res) => {
+  const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+  if (incomingSecret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  const pairs = (process.env.TARGET_PAIRS || 'EURUSD,GBPUSD,XAUUSD').split(',');
+  const results = [];
+  let report = '📊 <b>Weekly COT Intelligence Report</b>\n';
+  report += new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) + '\n\n';
+
+  for (const pair of pairs) {
+    const clean = pair.trim();
+    const base = clean.substring(0, 3);
+    try {
+      const prompt =
+        `Search for the latest CFTC Commitments of Traders (COT) report for ${base}.\n` +
+        `Look on: barchart.com/forex, investing.com/forex, or dailyfx.com/forex\n\n` +
+        `Extract:\n- Net non-commercial positioning\n- Increasing or decreasing\n- Commercials opposing (contrarian signal)\n\n` +
+        `Respond ONLY with JSON:\n{"cot_sentiment":"BULLISH"|"BEARISH"|"NEUTRAL","net_position":int,"trend":"INCREASING_LONGS"|"INCREASING_SHORTS"|"STABLE","extreme":bool,"contrarian_signal":bool,"summary":"one sentence max 15 words","report_date":"date or unknown"}`;
+
+      const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'web-search-2025-03-05',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 250,
+          system: 'You are a JSON-only responder.',
+          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+
+      const aiData = await aiRes.json();
+      let text = '';
+      if (aiData.content) for (const block of aiData.content) if (block.type === 'text') text = block.text;
+      const match = text.match(/\{[\s\S]*\}/);
+      const cot = match ? JSON.parse(match[0]) : { cot_sentiment: 'NEUTRAL', summary: 'Data unavailable', extreme: false, contrarian_signal: false };
+
+      const icon = cot.cot_sentiment === 'BULLISH' ? '🟢' : cot.cot_sentiment === 'BEARISH' ? '🔴' : '⚪';
+      report += `${icon} <b>${clean}</b>: ${cot.summary || '—'}\n`;
+      if (cot.extreme)           report += `   ⚠️ Extreme positioning\n`;
+      if (cot.contrarian_signal) report += `   🔄 Contrarian signal\n`;
+      report += `\n`;
+      results.push({ pair: clean, cot });
+    } catch (e) {
+      console.error(`COT error for ${clean}:`, e.message);
+      report += `⚪ <b>${clean}</b>: Data unavailable\n\n`;
+    }
+  }
+  report += `<i>Source: CFTC via Claude AI search</i>`;
+
+  if (ADMIN_CHAT_ID)    await sendToTelegram(ADMIN_CHAT_ID, report);
+  if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, report);
+  res.json({ ok: true, pairs: results.length, results });
+});
+
+// ═══════════════════════════════════════════════════════════
+// CRON: Generate Daily Marketing Content
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/generate-daily-content', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (secret !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+
+  try {
+    // Get today's trades from Postgres (replaces GAS sheet read)
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const t = await pool.query(
+      `SELECT symbol, action, pnl, result, strategy FROM trade_log WHERE time::date = $1`,
+      [todayStr]
+    );
+    const trades = t.rows;
+    if (trades.length === 0) {
+      return res.json({ ok: true, skipped: 'No trades today' });
+    }
+
+    let wins = 0, losses = 0, totalPnl = 0, bestPnl = 0, bestSym = '—', bestAct = '';
+    trades.forEach(r => {
+      const pnl = parseFloat(r.pnl || 0);
+      totalPnl += pnl;
+      if (pnl > 0) wins++; else if (pnl < 0) losses++;
+      if (pnl > bestPnl) { bestPnl = pnl; bestSym = r.symbol; bestAct = r.action; }
+    });
+    const winRate = Math.round(wins / trades.length * 100);
+    const pnlStr = (totalPnl >= 0 ? '+' : '') + '$' + Math.abs(totalPnl).toFixed(2);
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const tradeData = { total: trades.length, wins, losses, winRate, totalPnl, pnlStr, bestSym, bestAct, bestPnl, date: dateStr };
+    const platforms = ['Twitter/X', 'Instagram', 'LinkedIn', 'Telegram'];
+
+    for (const platform of platforms) {
+      const prompt =
+        `You are the social media manager for Uluka Ultra — an AI forex EA.\n\n` +
+        `Today's verified live results:\n` +
+        `- Date: ${dateStr}\n- Trades: ${trades.length}\n- Wins: ${wins} | Losses: ${losses}\n` +
+        `- Win Rate: ${winRate}%\n- Net P&L: ${pnlStr}\n` +
+        `- Best: ${bestAct} ${bestSym} +$${bestPnl.toFixed(2)}\n\n` +
+        `Write a ${platform} post with:\n` +
+        `- Results with transparency\n- Human tone\n- CTA: DM for info\n` +
+        `${platform.includes('Twitter') ? '- Max 260 chars\n' : ''}` +
+        `${platform.includes('Instagram') ? '- Engaging emoji caption, 5-8 hashtags\n' : ''}` +
+        `${platform.includes('LinkedIn') ? '- Professional, longer form\n' : ''}` +
+        `${platform.includes('Telegram') ? '- HTML formatted, <b>bold</b> for numbers\n' : ''}` +
+        `If a losing day: be transparent. NEVER fabricate.\nRespond with ONLY the post text.`;
+
+      try {
+        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': CLAUDE_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 500,
+            system: 'You are a social media copywriter. Write only the post text.',
+            messages: [{ role: 'user', content: prompt }]
+          })
+        });
+        const aiData = await aiRes.json();
+        let post = aiData.content?.[0]?.text || '';
+        post = post.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+        post = post.replace(/\\n/g, '\n');
+
+        if (post) {
+          await pool.query(
+            `INSERT INTO post_queue (date, platform, content, status) VALUES ($1, $2, $3, 'PENDING_REVIEW')`,
+            [dateStr, platform, post]
+          );
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (e) {
+        console.error(`Content gen failed for ${platform}:`, e.message);
+      }
+    }
+
+    await sendAdminAlert(`✍️ <b>Daily Content Ready</b>\n${dateStr}\n${trades.length} trades | ${pnlStr}\n\nReview in /admin/queue`);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('generate-daily-content error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CRON: Publish Approved Posts
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/publish-approved-posts', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (secret !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+
+  try {
+    const pending = await pool.query(
+      `SELECT id, platform, content FROM post_queue WHERE status = 'APPROVED' ORDER BY id ASC LIMIT 20`
+    );
+    let published = 0, failed = 0;
+
+    for (const row of pending.rows) {
+      const platformLower = (row.platform || '').toLowerCase();
+      let success = false;
+
+      if (platformLower.includes('telegram')) {
+        if (FREE_GROUP_ID)    success = await sendToTelegram(FREE_GROUP_ID, row.content);
+        if (PREMIUM_GROUP_ID && !success) success = await sendToTelegram(PREMIUM_GROUP_ID, row.content);
+      } else if (platformLower.includes('linkedin') || platformLower.includes('instagram') || platformLower.includes('twitter')) {
+        // Forward to admin for manual posting (no API keys configured)
+        await sendAdminAlert(`📤 <b>${row.platform} Post Ready (Manual)</b>\n\n${row.content}\n\n<i>Copy and post manually.</i>`);
+        success = true;
+      }
+
+      await pool.query(
+        `UPDATE post_queue SET status = $1, published_at = NOW(), notes = $2 WHERE id = $3`,
+        [success ? 'PUBLISHED' : 'PUBLISH_FAILED',
+         success ? `Posted to ${row.platform}` : 'Failed',
+         row.id]
+      );
+      if (success) published++; else failed++;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    if (published > 0 || failed > 0) {
+      await sendAdminAlert(`📤 <b>Auto-Publish</b>\n✅ ${published} published\n${failed > 0 ? '❌ ' + failed + ' failed' : ''}`);
+    }
+    res.json({ ok: true, published, failed });
+  } catch (err) {
+    console.error('publish-approved-posts error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CRON: Weekly Market Outlook (Monday)
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/weekly-market-outlook', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (secret !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+
+  try {
+    const pairs = (process.env.TARGET_PAIRS || 'EURUSD,GBPUSD,XAUUSD').split(',').slice(0, 3).join(', ');
+    const prompt =
+      `Search for the forex market outlook this week for: ${pairs}.\n` +
+      `Find key events: central bank decisions, economic data, geopolitical risks.\n\n` +
+      `Write a Monday LinkedIn market outlook post (professional, authoritative).\n` +
+      `Mention Uluka Ultra's AI-powered approach.\n` +
+      `Include: key pairs, major events, overall bias. End with CTA to follow.\n\n` +
+      `Respond with ONLY the post text.`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'web-search-2025-03-05',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const aiData = await aiRes.json();
+    let post = '';
+    if (aiData.content) for (const block of aiData.content) if (block.type === 'text') post = block.text;
+    post = post.replace(/```\w*\s*/gi, '').trim();
+
+    if (post) {
+      await pool.query(
+        `INSERT INTO post_queue (date, platform, content, status) VALUES ($1, $2, $3, 'PENDING_REVIEW')`,
+        [new Date().toLocaleDateString('en-GB'), 'LinkedIn (Weekly Outlook)', post]
+      );
+      await sendAdminAlert(`🌍 <b>Weekly Market Outlook Ready</b>\nCheck /admin/queue`);
+    }
+    res.json({ ok: true, generated: !!post });
+  } catch (err) {
+    console.error('weekly-market-outlook error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CRON: Weekly Lead Intelligence (Monday)
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/weekly-lead-report', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (secret !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+
+  try {
+    const prompt =
+      `Search for people actively looking for forex trading solutions right now.\n\n` +
+      `Search queries:\n1. 'looking for forex EA recommendation reddit 2026'\n` +
+      `2. 'failed FTMO challenge looking for help twitter'\n` +
+      `3. 'best forex signal service recommendation forum'\n` +
+      `4. 'automated forex trading system review 2026'\n` +
+      `5. 'prop firm EA forex recommendation'\n\n` +
+      `For each lead: username, thread link, context, urgency, suggested approach.\n` +
+      `Only include leads with real username or thread link. Do not invent.\n\n` +
+      `Respond ONLY with JSON:\n{"hot_leads":[{"platform":"...","username":"...","thread_link":"...","context":"max 20 words","intent":"BUYING|RESEARCHING|COMPLAINING","urgency":"HIGH|MEDIUM|LOW","suggested_approach":"max 15 words"}],"total_found":int}`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'web-search-2025-03-05',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        system: 'You are a JSON-only responder.',
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const aiData = await aiRes.json();
+    let text = '';
+    if (aiData.content) for (const block of aiData.content) if (block.type === 'text') text = block.text;
+    const match = text.match(/\{[\s\S]*\}/);
+    const leads = match ? JSON.parse(match[0]) : { hot_leads: [], total_found: 0 };
+
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    let report = `🎯 <b>Uluka Lead Intelligence Report</b>\n${dateStr}\n`;
+    report += `═══════════════════════\n\n`;
+    report += `🔥 <b>Hot Leads This Week: ${leads.total_found || 0}</b>\n`;
+
+    for (const lead of (leads.hot_leads || []).slice(0, 5)) {
+      const urgIcon = lead.urgency === 'HIGH' ? '🔴' : lead.urgency === 'MEDIUM' ? '🟡' : '🟢';
+      report += `${urgIcon} [${lead.platform}] `;
+      if (lead.username) report += `<b>${lead.username}</b> — `;
+      report += `${lead.context}\n`;
+      if (lead.thread_link) report += `   🔗 ${lead.thread_link}\n`;
+      report += `   💬 ${lead.suggested_approach}\n\n`;
+
+      await pool.query(
+        `INSERT INTO lead_intel (date, type, platform, username, thread_link, detail, action, urgency)
+         VALUES ($1, 'HOT_LEAD', $2, $3, $4, $5, $6, $7)`,
+        [dateStr, lead.platform || '', lead.username || '', lead.thread_link || '',
+         lead.context || '', lead.suggested_approach || '', lead.urgency || 'LOW']
+      );
+    }
+    report += `<i>Powered by Claude AI</i>`;
+    await sendAdminAlert(report);
+    res.json({ ok: true, count: leads.total_found || 0 });
+  } catch (err) {
+    console.error('weekly-lead-report error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Admin UI: Post Queue ─────────────────────────────────
+app.get('/admin/queue', async (req, res) => {
+  const secret = req.query.secret;
+  if (secret !== ADMIN_SECRET) return res.status(401).send('Unauthorized');
+
+  const result = await pool.query(
+    `SELECT id, date, platform, content, status FROM post_queue WHERE status IN ('PENDING_REVIEW','APPROVED','PUBLISH_FAILED') ORDER BY id DESC LIMIT 50`
+  );
+
+  const rows = result.rows.map(r => `
+    <div style="border:1px solid #1A304A;border-radius:8px;padding:16px;margin-bottom:12px;background:#0C1830;">
+      <div style="font-size:11px;color:#8899BB;">#${r.id} · ${r.date || ''} · <b style="color:#F0B429;">${r.platform}</b> · <span style="color:${r.status === 'APPROVED' ? '#00FF88' : '#FFB429'};">${r.status}</span></div>
+      <div style="margin:12px 0;white-space:pre-wrap;font-size:13px;color:#FFFFFF;">${r.content.replace(/</g, '&lt;')}</div>
+      ${r.status === 'PENDING_REVIEW'
+        ? `<a href="/admin/approve/${r.id}?secret=${secret}" style="display:inline-block;padding:8px 16px;background:#00FF88;color:#060D1A;border-radius:4px;text-decoration:none;font-weight:bold;font-size:12px;">✅ Approve</a>
+           <a href="/admin/reject/${r.id}?secret=${secret}" style="display:inline-block;padding:8px 16px;background:#FF5555;color:#FFFFFF;border-radius:4px;text-decoration:none;font-weight:bold;font-size:12px;margin-left:8px;">❌ Reject</a>`
+        : ''}
+    </div>
+  `).join('');
+
+  res.send(`<!DOCTYPE html><html><head><title>Post Queue</title></head>
+  <body style="background:#060D1A;color:#FFFFFF;font-family:'Courier New',monospace;padding:24px;max-width:900px;margin:auto;">
+    <h1 style="color:#F0B429;">🦉 Uluka Post Queue</h1>
+    <p style="color:#8899BB;">Approve posts to publish on the next hourly run. Reject to skip.</p>
+    ${rows || '<p style="color:#8899BB;">Queue empty.</p>'}
+  </body></html>`);
+});
+
+app.get('/admin/approve/:id', async (req, res) => {
+  if (req.query.secret !== ADMIN_SECRET) return res.status(401).send('Unauthorized');
+  await pool.query(`UPDATE post_queue SET status = 'APPROVED' WHERE id = $1`, [req.params.id]);
+  res.redirect(`/admin/queue?secret=${req.query.secret}`);
+});
+
+app.get('/admin/reject/:id', async (req, res) => {
+  if (req.query.secret !== ADMIN_SECRET) return res.status(401).send('Unauthorized');
+  await pool.query(`UPDATE post_queue SET status = 'REJECTED' WHERE id = $1`, [req.params.id]);
+  res.redirect(`/admin/queue?secret=${req.query.secret}`);
+});
+
+// ─── Test endpoints ───────────────────────────────────────
+app.get('/test-cot', async (req, res) => {
+  const r = await fetch(`http://localhost:${PORT}/cron/cot-report?secret=${process.env.CRON_SECRET}`);
+  res.json(await r.json());
+});
+
+app.get('/test-generate-content', async (req, res) => {
+  const r = await fetch(`http://localhost:${PORT}/cron/generate-daily-content?secret=${process.env.CRON_SECRET}`);
+  res.json(await r.json());
+});
+
 // Test route — visit in browser to verify email works
 app.get('/test-email', async (req, res) => {
   const result = await sendEmail({
