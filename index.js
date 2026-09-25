@@ -4191,7 +4191,25 @@ app.all('/cron/dispatcher', async (req, res) => {
   const utcDate   = now.getUTCDate();
   const results   = {};
 
+  // Helper — calls another endpoint on this same server
+  const runEndpoint = async (path, label) => {
+    try {
+      const url = `http://localhost:${PORT}${path}?secret=${process.env.CRON_SECRET}`;
+      const r = await fetch(url);
+      const data = await r.json().catch(() => ({}));
+      results[label] = data.ok ? 'ok' : 'failed';
+      console.log(`✅ Dispatched ${label}:`, JSON.stringify(data).substring(0, 150));
+    } catch (e) {
+      results[label] = 'error: ' + e.message;
+      console.error(`❌ Dispatcher ${label} failed:`, e.message);
+    }
+  };
+
   try {
+    // ═══════════════════════════════════════════════════════
+    // EMAIL JOBS (existing)
+    // ═══════════════════════════════════════════════════════
+
     // Friday 22:xx UTC → weekly performance emails
     if (utcDay === 5 && utcHour === 22) {
       const clients = await pool.query(
@@ -4247,6 +4265,38 @@ app.all('/cron/dispatcher', async (req, res) => {
         );
       }
       results.monthly_reports = clients.rows.length;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // NEW JOBS — migrated from GAS
+    // ═══════════════════════════════════════════════════════
+
+    // Daily 07:xx UTC (except Monday) → generate marketing content
+    if (utcHour === 7 && utcDay !== 1) {
+      await runEndpoint('/cron/generate-daily-content', 'daily_content');
+    }
+
+    // Every hour at :xx → publish approved posts
+    await runEndpoint('/cron/publish-approved-posts', 'publish_posts');
+
+    // Monday 07:xx UTC → weekly market outlook
+    if (utcDay === 1 && utcHour === 7) {
+      await runEndpoint('/cron/weekly-market-outlook', 'market_outlook');
+    }
+
+    // Monday 08:xx UTC → weekly lead intelligence
+    if (utcDay === 1 && utcHour === 8) {
+      await runEndpoint('/cron/weekly-lead-report', 'lead_report');
+    }
+
+    // Friday 20:xx UTC → weekly COT report
+    if (utcDay === 5 && utcHour === 20) {
+      await runEndpoint('/cron/cot-report', 'cot_report');
+    }
+
+    // Friday 23:xx UTC → PAYE archive
+    if (utcDay === 5 && utcHour === 23) {
+      await runEndpoint('/cron/paye-archive', 'paye_archive');
     }
 
     res.json({ ok: true, utcHour, utcDay, utcDate, results });
