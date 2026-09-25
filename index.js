@@ -544,6 +544,157 @@ function buildClientEODCardHTML(d) {
   `;
 }
 
+// ─── HTML TEMPLATE — PAYE Archive Card (admin) ─────────────
+function buildPAYEArchiveCardHTML(d) {
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">WEEKLY PAYE ARCHIVE</div>
+        </div>
+        <div style="font-size:32px;color:#F0B429;">💰</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
+        <div style="flex:1;">
+          <div style="font-size:36px;font-weight:bold;color:#F0B429;">
+            $${d.paye_amount || '0.00'}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
+            Week P&L: <span style="color:#00FF88;font-weight:bold;">${d.week_profit || '—'}</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Period: <span style="color:#FFFFFF;">${d.week_dates || '—'}</span>
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
+          <div style="font-size:10px;color:#8899BB;margin-bottom:8px;letter-spacing:2px;">DISTRIBUTION</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">Clients</span>
+            <span style="color:#FFFFFF;font-weight:bold;">${d.total_trades || 0}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">Client share (75%)</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.client_amount || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#8899BB;">Next period</span>
+            <span style="color:#FFFFFF;">${d.next_period || '—'}</span>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:8px;">
+        📅 ${d.week_label || ''} · ${new Date().toDateString()}
+      </div>
+    </div>
+  `;
+}
+
+// ─── HTML TEMPLATE — PAYE Billing Card (client) ───────────
+function buildPAYEBillingCardHTML(d) {
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">PAYE BILLING</div>
+        </div>
+        <div style="font-size:32px;color:#F0B429;">💎</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
+        <div style="flex:1;">
+          <div style="font-size:18px;font-weight:bold;color:#FFFFFF;">
+            ${d.client_name || 'Client'}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
+            Week: <span style="color:#FFFFFF;">${d.week_dates || '—'}</span>
+          </div>
+          <div style="font-size:32px;font-weight:bold;color:#F0B429;margin-top:18px;">
+            $${d.paye_amount || '0.00'}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:4px;">Amount due</div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
+          <div style="font-size:10px;color:#8899BB;margin-bottom:8px;letter-spacing:2px;">BREAKDOWN</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">Net Profit</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.week_profit || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="color:#8899BB;">You keep (75%)</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.client_amount || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#8899BB;">Payment</span>
+            <span style="color:#FFFFFF;">${d.pay_method || 'Crypto'}</span>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#F0B429;
+                  border-top:1px solid #1A304A;padding-top:8px;">
+        📲 Send payment to @WiseOwlUluka · Due Monday
+      </div>
+    </div>
+  `;
+}
+
+// ─── HTML TEMPLATE — Welcome Premium ──────────────────────
+function buildWelcomePremiumCardHTML(username) {
+  return `
+    <div style="width:800px;height:400px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
+                color:#FFFFFF;font-family:'Courier New',monospace;padding:40px;
+                box-sizing:border-box;border:3px solid #F0B429;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
+      <div style="font-size:52px;margin-bottom:16px;">🦉</div>
+      <div style="font-size:28px;font-weight:bold;color:#F0B429;letter-spacing:2px;">
+        WELCOME TO PREMIUM
+      </div>
+      <div style="font-size:18px;color:#FFFFFF;margin-top:14px;">
+        ${username || 'Trader'}
+      </div>
+      <div style="font-size:13px;color:#8899BB;margin-top:20px;line-height:1.6;max-width:560px;">
+        You now receive full hoots — including SL, TP1, TP2, TP3<br>
+        All trade cards · Live results · Priority support
+      </div>
+      <div style="font-size:12px;color:#F0B429;margin-top:24px;font-weight:bold;">
+        Let the owl work. 🦉
+      </div>
+    </div>
+  `;
+}
+
+// ─── HTML TEMPLATE — Welcome Free ─────────────────────────
+function buildWelcomeFreeCardHTML(username) {
+  return `
+    <div style="width:800px;height:400px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
+                color:#FFFFFF;font-family:'Courier New',monospace;padding:40px;
+                box-sizing:border-box;border:3px solid #00D4FF;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
+      <div style="font-size:52px;margin-bottom:16px;">🦉</div>
+      <div style="font-size:28px;font-weight:bold;color:#00D4FF;letter-spacing:2px;">
+        WELCOME TO FREE HOOTS
+      </div>
+      <div style="font-size:18px;color:#FFFFFF;margin-top:14px;">
+        ${username || 'Trader'}
+      </div>
+      <div style="font-size:13px;color:#8899BB;margin-top:20px;line-height:1.6;max-width:560px;">
+        You'll receive teaser hoots when conditions align<br>
+        Upgrade to Premium for full SL + TP levels
+      </div>
+      <div style="font-size:12px;color:#00D4FF;margin-top:24px;font-weight:bold;">
+        💎 Upgrade: @WiseOwlUluka
+      </div>
+    </div>
+  `;
+}
+
 // ═══════════════════════════════════════════════════════════
 // SEND PHOTO TO TELEGRAM (multipart/form-data, no npm package)
 // ═══════════════════════════════════════════════════════════
@@ -696,6 +847,47 @@ app.get('/test-client-eod-card', async (req, res) => {
   }));
   if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
   const sent = await sendPhotoToChat(chatId, img, '🧪 Client EOD card test');
+  res.json({ ok: sent, chatId, cardSize: img.byteLength });
+});
+
+app.get('/test-paye-archive-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const img = await renderCard(buildPAYEArchiveCardHTML({
+    paye_amount: '78.10', week_profit: '+$312.40',
+    week_dates: '20–25 Sep 2026', week_label: 'Week 39',
+    total_trades: 32, client_amount: '$234.30',
+    next_period: '27 Sep – 3 Oct'
+  }));
+  if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, img, '🧪 PAYE archive test');
+  res.json({ ok: sent, chatId, cardSize: img.byteLength });
+});
+
+app.get('/test-paye-billing-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const img = await renderCard(buildPAYEBillingCardHTML({
+    client_name: 'John Doe', week_dates: '20–25 Sep 2026',
+    paye_amount: '78.10', week_profit: '+$312.40',
+    client_amount: '$234.30', pay_method: 'USDT TRC20'
+  }));
+  if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, img, '🧪 PAYE billing test');
+  res.json({ ok: sent, chatId, cardSize: img.byteLength });
+});
+
+app.get('/test-welcome-premium-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const img = await renderCard(buildWelcomePremiumCardHTML('@TestTrader'));
+  if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, img, '🧪 Welcome Premium test');
+  res.json({ ok: sent, chatId, cardSize: img.byteLength });
+});
+
+app.get('/test-welcome-free-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const img = await renderCard(buildWelcomeFreeCardHTML('@FreeTrader'));
+  if (!img) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, img, '🧪 Welcome Free test');
   res.json({ ok: sent, chatId, cardSize: img.byteLength });
 });
 
