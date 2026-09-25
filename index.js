@@ -3813,20 +3813,19 @@ async function generateInvoiceForAccount(accountId) {
     const chatId     = lic.rows[0].telegram_id;
     const plan       = (lic.rows[0].subscription || 'PAYE').toUpperCase();
 
-    // 2. Get billing data
+        // 2. Get billing snapshot (for balance display only)
     const bill = await pool.query(
-      'SELECT start_balance, current_balance, net_profit, payee_25 FROM billing WHERE account_id = $1',
+      'SELECT start_balance, current_balance FROM billing WHERE account_id = $1',
       [accountId]
     );
     if (!bill.rows[0]) {
       console.log(`Invoice: no billing for ${accountId}`);
       return null;
     }
-    const openBal   = parseFloat(bill.rows[0].start_balance   || 0);
-    const closeBal  = parseFloat(bill.rows[0].current_balance || 0);
-    let   netProfit = parseFloat(bill.rows[0].net_profit      || 0);
+    const openBal  = parseFloat(bill.rows[0].start_balance   || 0);
+    const closeBal = parseFloat(bill.rows[0].current_balance || 0);
 
-    // 3. Get trade stats for current month
+    // 3. Compute period stats + profit from trade_log (source of truth)
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
@@ -3834,6 +3833,7 @@ async function generateInvoiceForAccount(accountId) {
     const stats = await pool.query(
       `SELECT COUNT(*) AS total,
               COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+              COALESCE(SUM(pnl), 0) AS net_profit,
               COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0) AS gross_profit,
               COALESCE(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0) AS gross_loss
        FROM trade_log
@@ -3844,8 +3844,12 @@ async function generateInvoiceForAccount(accountId) {
     const wins        = parseInt(stats.rows[0].wins || 0);
     const grossProfit = parseFloat(stats.rows[0].gross_profit || 0);
     const grossLoss   = parseFloat(stats.rows[0].gross_loss || 0);
-    const winRate     = totalTrades > 0 ? (wins / totalTrades * 100).toFixed(1) : '0.0';
-    const pf          = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : '∞';
+
+    // THIS is the period's real profit — from actual trades, not all-time billing
+    let netProfit = Math.round(parseFloat(stats.rows[0].net_profit || 0) * 100) / 100;
+
+    const winRate = totalTrades > 0 ? (wins / totalTrades * 100).toFixed(1) : '0.0';
+    const pf      = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : '∞';
 
     // 4. Apply PAYE logic
        const PAYE_PCT   = 0.25;
