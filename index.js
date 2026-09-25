@@ -255,6 +255,29 @@ app.get('/test-card', async (req, res) => {
   }
 });
 
+// ─── TEST: Render AND send card to Telegram ──────────────
+app.get('/test-send-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const sample = {
+    action: 'BUY', symbol: 'XAUUSD', strategy: 'Order Block',
+    session: 'London', conf: '78', entry: '3350.45', sl: '3345.00',
+    tp1: '3360.00', rr1: '1.8', tp2: '3370.00', rr2: '3.5',
+    tp3: '3385.00', rr3: '6.3', lot: '0.05', risk_pct: '0.5',
+    ticket: '12345678', time: new Date().toISOString().slice(0,16).replace('T',' ')
+  };
+  const html = buildOpenCardHTML(sample);
+  const image = await renderCard(html);
+  if (!image) {
+    return res.status(500).json({ ok: false, step: 'renderCard', error: 'Card render failed' });
+  }
+  const sent = await sendPhotoToChat(
+    chatId,
+    image,
+    `🧪 <b>Test Card</b> — sent to ${chatId}`
+  );
+  res.json({ ok: sent, chatId, cardSize: image.byteLength });
+});
+
 // ─── Helpers ───────────────────────────────────────────────
 async function sendToTelegram(chatId, text, keyboard) {
     if (!TELEGRAM_BOT_TOKEN || !chatId) return false;
