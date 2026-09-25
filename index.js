@@ -3796,6 +3796,251 @@ app.all('/cron/paye-archive', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// INVOICE GENERATOR — migrated from GAS
+// ═══════════════════════════════════════════════════════════
+async function generateInvoiceForAccount(accountId) {
+  try {
+    // 1. Get client info
+    const lic = await pool.query(
+      'SELECT client_name, telegram_id, subscription FROM licences WHERE account_id = $1',
+      [accountId]
+    );
+    if (!lic.rows[0]) {
+      console.log(`Invoice: no licence for ${accountId}`);
+      return null;
+    }
+    const clientName = lic.rows[0].client_name || 'Client';
+    const chatId     = lic.rows[0].telegram_id;
+    const plan       = (lic.rows[0].subscription || 'PAYE').toUpperCase();
+
+    // 2. Get billing data
+    const bill = await pool.query(
+      'SELECT start_balance, current_balance, net_profit, payee_25 FROM billing WHERE account_id = $1',
+      [accountId]
+    );
+    if (!bill.rows[0]) {
+      console.log(`Invoice: no billing for ${accountId}`);
+      return null;
+    }
+    const openBal   = parseFloat(bill.rows[0].start_balance   || 0);
+    const closeBal  = parseFloat(bill.rows[0].current_balance || 0);
+    let   netProfit = parseFloat(bill.rows[0].net_profit      || 0);
+
+    // 3. Get trade stats for current month
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const stats = await pool.query(
+      `SELECT COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+              COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0) AS gross_profit,
+              COALESCE(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0) AS gross_loss
+       FROM trade_log
+       WHERE account_id = $1 AND time >= $2`,
+      [accountId, monthStart]
+    );
+    const totalTrades = parseInt(stats.rows[0].total || 0);
+    const wins        = parseInt(stats.rows[0].wins || 0);
+    const grossProfit = parseFloat(stats.rows[0].gross_profit || 0);
+    const grossLoss   = parseFloat(stats.rows[0].gross_loss || 0);
+    const winRate     = totalTrades > 0 ? (wins / totalTrades * 100).toFixed(1) : '0.0';
+    const pf          = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : '∞';
+
+    // 4. Apply PAYE logic
+    const PAYE_PCT   = 0.25;
+    const PAYE_FLOOR = 99;
+    let payeOwed = 0;
+    if (netProfit > 0) {
+      payeOwed = Math.max(netProfit * PAYE_PCT, PAYE_FLOOR);
+    }
+    const clientKeeps = Math.max(0, netProfit - payeOwed);
+
+    // 5. Build reference
+    const now = new Date();
+    const mmYYYY = String(now.getMonth() + 1).padStart(2, '0') + now.getFullYear();
+    const invoiceRef = 'ULU-' + String(accountId).slice(-6) + '-' + mmYYYY;
+    const periodStart = monthStart.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const periodEnd   = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const payeIcon = payeOwed > 0 ? '💰' : '✅';
+    const profIcon = netProfit >= 0 ? '📈' : '📉';
+
+    // 6. Build message
+    const msg =
+      `🧾 <b>ULUKA ULTRA — INVOICE</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 <b>Client:</b> ${clientName}\n` +
+      `🆔 <b>Account:</b> <code>${accountId}</code>\n` +
+      `📋 <b>Ref:</b> <code>${invoiceRef}</code>\n` +
+      `📅 <b>Period:</b> ${periodStart} – ${periodEnd}\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `📊 <b>PERFORMANCE SUMMARY</b>\n` +
+      `Trades:       ${totalTrades}\n` +
+      `Win Rate:     ${winRate}%\n` +
+      `Profit Factor: ${pf}x\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `${profIcon} <b>BILLING BREAKDOWN</b>\n` +
+      `Opening Balance:  $${openBal.toFixed(2)}\n` +
+      `Closing Balance:  $${closeBal.toFixed(2)}\n` +
+      `Net Profit:       <b>$${netProfit.toFixed(2)}</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `${payeIcon} <b>AMOUNT DUE</b>\n` +
+      `Plan:             ${plan} (25% of profits)\n` +
+      `Uluka Fee (25%):  <b>$${payeOwed.toFixed(2)}</b>\n` +
+      `${payeOwed <= PAYE_FLOOR && netProfit > 0 ? '⚠️ Minimum floor applied ($99)\n' : ''}` +
+      `You Keep (75%):   <b>$${clientKeeps.toFixed(2)}</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      (payeOwed > 0
+        ? `💳 <b>PAYMENT</b>\n` +
+          `Method: Crypto / Bank Transfer\n` +
+          `Due By: ${now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}\n` +
+          `Ref: <code>${invoiceRef}</code>\n\n` +
+          `📩 Contact @WiseOwlUluka to arrange payment.\n`
+        : `✅ No payment due this period.\n`) +
+      `\n<i>Thank you for trading with Uluka Ultra 🦉</i>`;
+
+    // 7. Send to client + admin
+    if (chatId) {
+      await sendToTelegram(chatId, msg);
+      console.log(`📧 Invoice sent to client: ${accountId}`);
+    }
+    if (ADMIN_CHAT_ID) {
+      await sendToTelegram(ADMIN_CHAT_ID, `🧾 <b>INVOICE COPY — ${clientName}</b>\n` + msg);
+    }
+
+    // 8. Log to database
+    await pool.query(
+      `INSERT INTO invoices (account_id, client_name, invoice_ref, period_start, period_end,
+                             net_profit, paye_due, client_keeps, total_trades, win_rate, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (invoice_ref) DO UPDATE SET
+         net_profit   = EXCLUDED.net_profit,
+         paye_due     = EXCLUDED.paye_due,
+         client_keeps = EXCLUDED.client_keeps,
+         total_trades = EXCLUDED.total_trades,
+         win_rate     = EXCLUDED.win_rate`,
+      [accountId, clientName, invoiceRef, periodStart, periodEnd,
+       netProfit, payeOwed, clientKeeps, totalTrades, winRate,
+       payeOwed > 0 ? 'PENDING_PAYMENT' : 'NO_CHARGE']
+    );
+
+    return { accountId, clientName, invoiceRef, netProfit, payeOwed, clientKeeps, totalTrades, winRate };
+  } catch (e) {
+    console.error(`generateInvoiceForAccount error [${accountId}]:`, e.message);
+    return null;
+  }
+}
+
+async function generateAllInvoices() {
+  const licences = await pool.query(
+    `SELECT account_id FROM licences
+     WHERE status = 'ACTIVE' AND account_id IS NOT NULL AND subscription NOT LIKE '%TRIAL%'`
+  );
+  const results = [];
+  for (const row of licences.rows) {
+    const r = await generateInvoiceForAccount(row.account_id);
+    if (r) results.push(r);
+  }
+  return results;
+}
+
+// ─── Cron endpoint: Generate all invoices ────────────────
+app.all('/cron/generate-invoices', async (req, res) => {
+  const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+  if (incomingSecret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  try {
+    const results = await generateAllInvoices();
+    await sendAdminAlert(`🧾 <b>INVOICES GENERATED</b>\n${results.length} client invoices sent`);
+    res.json({ ok: true, sent: results.length, results });
+  } catch (e) {
+    console.error('generate-invoices error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ─── Cron endpoint: Mark invoice as paid (manual) ────────
+app.post('/admin/invoice-paid/:invoice_ref', async (req, res) => {
+  if (req.headers['x-admin-secret'] !== ADMIN_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    await pool.query(
+      `UPDATE invoices SET status = 'PAID', paid_at = NOW() WHERE invoice_ref = $1`,
+      [req.params.invoice_ref]
+    );
+    res.json({ ok: true, ref: req.params.invoice_ref });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ─── Admin UI: View all invoices ────────────────────────
+app.get('/admin/invoices', async (req, res) => {
+  if (req.query.secret !== ADMIN_SECRET) return res.status(401).send('Unauthorized');
+  try {
+    const result = await pool.query(
+      `SELECT * FROM invoices ORDER BY date DESC LIMIT 200`
+    );
+    const rows = result.rows.map(r => `
+      <tr>
+        <td>${r.date ? new Date(r.date).toLocaleDateString('en-GB') : ''}</td>
+        <td>${r.client_name || ''}</td>
+        <td><code>${r.invoice_ref || ''}</code></td>
+        <td>${r.period_start} – ${r.period_end}</td>
+        <td style="color:${parseFloat(r.net_profit) >= 0 ? '#00FF88' : '#FF5555'};">
+          $${parseFloat(r.net_profit || 0).toFixed(2)}
+        </td>
+        <td>$${parseFloat(r.paye_due || 0).toFixed(2)}</td>
+        <td>${r.total_trades || 0}</td>
+        <td>${r.win_rate || '0'}%</td>
+        <td style="color:${r.status === 'PAID' ? '#00FF88' : r.status === 'NO_CHARGE' ? '#8899BB' : '#F0B429'};">
+          ${r.status}
+        </td>
+        <td>
+          ${r.status === 'PENDING_PAYMENT' ? `<a href="/admin/invoice-paid/${r.invoice_ref}?secret=${req.query.secret}" style="color:#00FF88;">Mark Paid</a>` : ''}
+        </td>
+      </tr>
+    `).join('');
+    res.send(`<!DOCTYPE html><html><head><title>Invoices</title></head>
+    <body style="background:#060D1A;color:#FFF;font-family:monospace;padding:24px;">
+      <h1 style="color:#F0B429;">🧾 Uluka Invoices</h1>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:#0C1830;color:#8899BB;">
+          <th style="padding:8px;text-align:left;">Date</th>
+          <th style="padding:8px;text-align:left;">Client</th>
+          <th style="padding:8px;text-align:left;">Ref</th>
+          <th style="padding:8px;text-align:left;">Period</th>
+          <th style="padding:8px;text-align:left;">Net P&L</th>
+          <th style="padding:8px;text-align:left;">PAYE</th>
+          <th style="padding:8px;text-align:left;">Trades</th>
+          <th style="padding:8px;text-align:left;">Win %</th>
+          <th style="padding:8px;text-align:left;">Status</th>
+          <th style="padding:8px;text-align:left;">Action</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="10" style="padding:16px;color:#8899BB;">No invoices yet.</td></tr>'}</tbody>
+      </table>
+    </body></html>`);
+  } catch (e) {
+    res.status(500).send('Error: ' + e.message);
+  }
+});
+
+// ─── Test endpoint — generate for one account ───────────
+app.get('/test-invoice/:accountId', async (req, res) => {
+  const r = await generateInvoiceForAccount(req.params.accountId);
+  res.json({ ok: !!r, result: r });
+});
+
+// ─── Test endpoint — generate for all accounts ──────────
+app.get('/test-invoices-all', async (req, res) => {
+  const results = await generateAllInvoices();
+  res.json({ ok: true, sent: results.length, results });
+});
+
+// ═══════════════════════════════════════════════════════════
 // CRON: Weekly COT Intelligence Report
 // ═══════════════════════════════════════════════════════════
 app.all('/cron/cot-report', async (req, res) => {
@@ -4294,9 +4539,14 @@ app.all('/cron/dispatcher', async (req, res) => {
       await runEndpoint('/cron/cot-report', 'cot_report');
     }
 
-    // Friday 23:xx UTC → PAYE archive
+        // Friday 23:xx UTC → PAYE archive
     if (utcDay === 5 && utcHour === 23) {
       await runEndpoint('/cron/paye-archive', 'paye_archive');
+    }
+
+    // 1st of month 09:xx UTC → generate invoices for all clients
+    if (utcDate === 1 && utcHour === 9) {
+      await runEndpoint('/cron/generate-invoices', 'invoices');
     }
 
     res.json({ ok: true, utcHour, utcDay, utcDate, results });
