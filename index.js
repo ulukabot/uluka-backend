@@ -3848,13 +3848,16 @@ async function generateInvoiceForAccount(accountId) {
     const pf          = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : '∞';
 
     // 4. Apply PAYE logic
-    const PAYE_PCT   = 0.25;
+       const PAYE_PCT   = 0.25;
     const PAYE_FLOOR = 99;
     let payeOwed = 0;
     if (netProfit > 0) {
       payeOwed = Math.max(netProfit * PAYE_PCT, PAYE_FLOOR);
     }
-    const clientKeeps = Math.max(0, netProfit - payeOwed);
+    // Round to 2 decimals for money
+    payeOwed     = Math.round(payeOwed * 100) / 100;
+    netProfit    = Math.round(netProfit * 100) / 100;
+    const clientKeeps = Math.round(Math.max(0, netProfit - payeOwed) * 100) / 100;
 
     // 5. Build reference
     const now = new Date();
