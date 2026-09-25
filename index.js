@@ -200,6 +200,42 @@ function buildOpenCardHTML(d) {
   `;
 }
 
+// ═══════════════════════════════════════════════════════════
+// SEND PHOTO TO TELEGRAM (multipart/form-data, no npm package)
+// ═══════════════════════════════════════════════════════════
+async function sendPhotoToChat(chatId, imageBuffer, caption) {
+  if (!TELEGRAM_BOT_TOKEN || !chatId) {
+    console.error('❌ sendPhotoToChat: missing token or chatId');
+    return false;
+  }
+  try {
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    if (caption) {
+      form.append('caption', caption);
+      form.append('parse_mode', 'HTML');
+    }
+    const blob = new Blob([imageBuffer], { type: 'image/png' });
+    form.append('photo', blob, 'card.png');
+
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+      method: 'POST',
+      body: form
+    });
+
+    const data = await res.json();
+    if (!data.ok) {
+      console.error('❌ sendPhoto failed:', data.description);
+      return false;
+    }
+    console.log('✅ Photo sent to', chatId);
+    return true;
+  } catch (err) {
+    console.error('❌ sendPhoto error:', err.message);
+    return false;
+  }
+}
+
 // ─── TEST ENDPOINT ────────────────────────────────────────
 app.get('/test-card', async (req, res) => {
   const sample = {
