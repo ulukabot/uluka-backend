@@ -4053,16 +4053,38 @@ async function handleTelegramUpdate(update) {
     const msg = update.message || update.edited_message;
     if (!msg) return;
 
-    // New member joined
+       // New member joined — send welcome card
     if (msg.new_chat_members && msg.new_chat_members.length > 0) {
       const chatName = msg.chat.title || msg.chat.id;
       const chatId = msg.chat.id.toString();
-      if (FREE_GROUP_ID && chatId === FREE_GROUP_ID) {
-        msg.new_chat_members.forEach(member => {
-          const name = [member.first_name, member.last_name].filter(Boolean).join(' ');
-          const username = member.username ? '@' + member.username : 'no username';
-          sendAdminAlert(`👋 <b>New Free Group Member</b>\n👤 ${name} (${username})\n🆔 <code>${member.id}</code>\n📢 ${chatName}`);
-        });
+      const isFree    = FREE_GROUP_ID && chatId === FREE_GROUP_ID;
+      const isPremium = PREMIUM_GROUP_ID && chatId === PREMIUM_GROUP_ID;
+
+      for (const member of msg.new_chat_members) {
+        const name = [member.first_name, member.last_name].filter(Boolean).join(' ');
+        const username = member.username ? '@' + member.username : name || 'Trader';
+
+        // Admin alert
+        sendAdminAlert(`👋 <b>New ${isPremium ? 'Premium' : 'Free'} Group Member</b>\n👤 ${name} (${username})\n🆔 <code>${member.id}</code>\n📢 ${chatName}`);
+
+        // Welcome card to the group
+        try {
+          if (isPremium) {
+            const img = await renderCard(buildWelcomePremiumCardHTML(username));
+            if (img) {
+              await sendPhotoToChat(PREMIUM_GROUP_ID, img,
+                `⭐ <b>Welcome to Premium, ${username}!</b>`);
+            }
+          } else if (isFree) {
+            const img = await renderCard(buildWelcomeFreeCardHTML(username));
+            if (img) {
+              await sendPhotoToChat(FREE_GROUP_ID, img,
+                `🔓 <b>Welcome to Free Hoots, ${username}!</b>`);
+            }
+          }
+        } catch(e) {
+          console.error('Welcome card error:', e.message);
+        }
       }
       return;
     }
