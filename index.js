@@ -3649,6 +3649,116 @@ if (incomingSecret !== process.env.CRON_SECRET) {
   }
 });
 
+// ─── CRON: Friday PAYE Archive + Per-Client Billing Cards ───
+app.all('/cron/paye-archive', async (req, res) => {
+  const incomingSecret = req.headers['x-cron-secret'] || req.query.secret;
+  if (incomingSecret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  const now = new Date();
+  const utcDay = now.getUTCDay();   // 5 = Friday
+
+  // Compute if this is the LAST Friday of the month
+  const nextFriday = new Date(now);
+  nextFriday.setDate(now.getDate() + 7);
+  const isLastFriday = nextFriday.getUTCMonth() !== now.getUTCMonth();
+
+  const results = { payeCount: 0, payeTotal: 0, cardsSent: 0, isLastFriday };
+
+  try {
+    const billing = await pool.query(
+      `SELECT account_id, client_name, start_balance, current_balance, net_profit, payee_25
+       FROM billing WHERE status = 'ACTIVE'`
+    );
+
+    const MONTHLY_MINIMUM = 99;
+    const periodLabel = isLastFriday ? 'Monthly (Min Floor $99)' : 'Weekly';
+
+    for (const row of billing.rows) {
+      const startBal  = parseFloat(row.start_balance || 0);
+      const currBal   = parseFloat(row.current_balance || 0);
+      const netProfit = currBal - startBal;
+
+      let payeAmt = netProfit > 0 ? netProfit * 0.25 : 0;
+      if (isLastFriday && payeAmt > 0 && payeAmt < MONTHLY_MINIMUM) {
+        payeAmt = MONTHLY_MINIMUM;
+      }
+
+      // Get client's Telegram + plan
+      const lic = await pool.query(
+        'SELECT telegram_id, subscription, client_name FROM licences WHERE account_id = $1',
+        [row.account_id]
+      );
+      const licRow = lic.rows[0] || {};
+      const plan = (licRow.subscription || 'PAYE').toUpperCase();
+      const isPaye = plan.includes('PAYE');
+      const chatId = licRow.telegram_id;
+
+      // Log to a paye_archive table if it exists — skip silently if not
+      try {
+        await pool.query(
+          `INSERT INTO paye_archive (date, account_id, client_name, payee_amount, net_profit, period, status)
+           VALUES (NOW(), $1, $2, $3, $4, $5, 'pending')`,
+          [row.account_id, licRow.client_name || row.client_name, payeAmt.toFixed(2),
+           netProfit.toFixed(2), periodLabel]
+        );
+      } catch(e) {
+        // Table might not exist — non-critical, continue
+      }
+
+      results.payeCount++;
+      results.payeTotal += payeAmt;
+
+      // Send per-client PAYE billing card (PAYE plan + profit only)
+      if (isPaye && netProfit > 0 && chatId) {
+        const billImg = await renderCard(buildPAYEBillingCardHTML({
+          client_name: licRow.client_name || row.client_name,
+          week_dates: new Date().toDateString(),
+          paye_amount: payeAmt.toFixed(2),
+          week_profit: '+$' + netProfit.toFixed(2),
+          client_amount: '$' + (netProfit * 0.75).toFixed(2),
+          pay_method: 'USDT TRC20'
+        }));
+        if (billImg) {
+          await sendPhotoToChat(chatId, billImg,
+            `💰 <b>PAYE Billing — ${new Date().toDateString()}</b>`);
+          results.cardsSent++;
+        }
+      }
+    }
+
+    // Admin archive card
+    const archiveImg = await renderCard(buildPAYEArchiveCardHTML({
+      paye_amount: results.payeTotal.toFixed(2),
+      week_profit: '+$' + (results.payeTotal * 4).toFixed(2),
+      week_dates: new Date().toDateString(),
+      week_label: isLastFriday ? 'Monthly PAYE' : 'Weekly PAYE',
+      total_trades: results.payeCount,
+      client_amount: '$' + (results.payeTotal * 3).toFixed(2),
+      next_period: 'Next Friday'
+    }));
+    if (archiveImg && ADMIN_CHAT_ID) {
+      await sendPhotoToChat(ADMIN_CHAT_ID, archiveImg,
+        `💰 <b>PAYE ARCHIVE</b> — ${results.payeCount} clients · $${results.payeTotal.toFixed(2)}`);
+    }
+
+    // Reset start balances if last Friday (new month baseline)
+    if (isLastFriday) {
+      await pool.query(
+        `UPDATE billing SET start_balance = current_balance WHERE status = 'ACTIVE'`
+      );
+      console.log('✅ Start balances reset for new month');
+    }
+
+    res.json({ ok: true, ...results });
+
+  } catch(err) {
+    console.error('🔥 paye-archive error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Test route — visit in browser to verify email works
 app.get('/test-email', async (req, res) => {
   const result = await sendEmail({
