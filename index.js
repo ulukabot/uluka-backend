@@ -200,6 +200,168 @@ function buildOpenCardHTML(d) {
   `;
 }
 
+// ─── HTML TEMPLATE — Free Open Card (teaser) ─────────────
+function buildFreeOpenCardHTML(d) {
+  const isBuy = (d.action || '').toUpperCase() === 'BUY';
+  const accent = isBuy ? '#00FF88' : '#FF5555';
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">FREE HOOT</div>
+        </div>
+        <div style="font-size:32px;color:#F0B429;">🦉</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
+        <div style="flex:1;">
+          <div style="font-size:26px;font-weight:bold;color:${accent};">
+            ${d.action || ''} ${d.symbol || ''}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
+            Session: <span style="color:#FFFFFF;">${d.session || '—'}</span>
+          </div>
+          <div style="font-size:14px;color:#F0B429;margin-top:20px;font-weight:bold;">
+            💎 Join Premium for full SL + TP2 + TP3
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
+          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">TEASER LEVELS</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Entry</span>
+            <span style="color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">SL</span>
+            <span style="color:#8899BB;">🔒 Premium</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#00FF88;">TP1</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr1 || '—'}</span></span>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:10px;">
+        👉 @WiseOwlUluka · t.me/ulukaowlbot
+      </div>
+    </div>
+  `;
+}
+
+// ─── HTML TEMPLATE — Trade Close Card ─────────────────────
+function buildCloseCardHTML(d) {
+  const profit = parseFloat(d.profit || 0);
+  const isWin = profit > 0.01;
+  const isLoss = profit < -0.01;
+  const accent = isWin ? '#00FF88' : (isLoss ? '#FF5555' : '#F0B429');
+  const emoji = isWin ? '✅' : (isLoss ? '❌' : '⚖️');
+  const profitStr = (profit >= 0 ? '+' : '-') + '$' + Math.abs(profit).toFixed(2);
+  const dailyPnl = parseFloat(d.daily_pnl || 0);
+  const dailyStr = (dailyPnl >= 0 ? '+' : '-') + '$' + Math.abs(dailyPnl).toFixed(2);
+
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">TRADE CLOSED</div>
+        </div>
+        <div style="font-size:32px;color:${accent};">${emoji}</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
+        <div style="flex:1;">
+          <div style="font-size:26px;font-weight:bold;color:${accent};">
+            ${d.result || '—'} ${d.symbol || ''}
+          </div>
+          <div style="font-size:14px;color:#8899BB;margin-top:8px;">
+            Direction: <span style="color:#FFFFFF;">${d.direction || d.action || '—'}</span>
+          </div>
+          <div style="font-size:14px;color:#8899BB;margin-top:6px;">
+            Reason: <span style="color:#FFFFFF;">${d.reason || '—'}</span>
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Ticket: <span style="color:#FFFFFF;">${d.ticket || '—'}</span>
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;text-align:center;">
+          <div style="font-size:11px;color:#8899BB;margin-bottom:14px;letter-spacing:2px;">P&amp;L</div>
+          <div style="font-size:36px;font-weight:bold;color:${accent};margin-bottom:14px;">
+            ${profitStr}
+          </div>
+          <div style="font-size:12px;color:#8899BB;">
+            Daily: <span style="color:#FFFFFF;font-weight:bold;">${dailyStr}</span>
+          </div>
+          ${d.health ? `<div style="font-size:12px;color:#8899BB;margin-top:6px;">
+            Health: <span style="color:#FFFFFF;">${d.health}/100</span>
+          </div>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:10px;margin-top:14px;">
+        <span>Uluka Ultra</span>
+        <span>${d.time || new Date().toISOString().slice(0,16).replace('T',' ')}</span>
+      </div>
+    </div>
+  `;
+}
+
+// ─── HTML TEMPLATE — SL Update Card ───────────────────────
+function buildSLUpdateCardHTML(d) {
+  return `
+    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+                font-family:'Courier New',monospace;padding:30px;
+                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                display:flex;flex-direction:column;justify-content:space-between;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
+          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">POSITION UPDATE</div>
+        </div>
+        <div style="font-size:32px;color:#F0B429;">⚖️</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
+        <div style="flex:1;">
+          <div style="font-size:26px;font-weight:bold;color:#F0B429;">
+            ${d.symbol || ''} ${d.direction || ''}
+          </div>
+          <div style="font-size:14px;color:#8899BB;margin-top:12px;">
+            ${d.be_text || 'Stop Loss Updated'}
+          </div>
+          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
+            Ticket: <span style="color:#FFFFFF;">${d.ticket || '—'}</span>
+          </div>
+        </div>
+        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
+          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">SL MOVED</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">Entry</span>
+            <span style="color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#8899BB;">New SL</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.new_sl || '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#8899BB;">Open P&amp;L</span>
+            <span style="color:#00FF88;font-weight:bold;">${d.open_pnl || '—'}</span>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:10px;">
+        🛡️ Trade is now protected · ${d.time || ''}
+      </div>
+    </div>
+  `;
+}
+
 // ═══════════════════════════════════════════════════════════
 // SEND PHOTO TO TELEGRAM (multipart/form-data, no npm package)
 // ═══════════════════════════════════════════════════════════
@@ -275,6 +437,41 @@ app.get('/test-send-card', async (req, res) => {
     image,
     `🧪 <b>Test Card</b> — sent to ${chatId}`
   );
+  res.json({ ok: sent, chatId, cardSize: image.byteLength });
+});
+
+// ─── TEST: Render close card and send to Telegram ──────────
+app.get('/test-close-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const win = req.query.win !== 'false';
+  const sample = {
+    symbol: 'XAUUSD', direction: 'BUY',
+    result: win ? 'PROFIT' : 'LOSS',
+    reason: win ? 'TP Hit' : 'SL Hit',
+    profit: win ? 47.20 : -18.60,
+    daily_pnl: win ? 124.50 : -12.30,
+    ticket: '12345678',
+    health: 82,
+    time: new Date().toISOString().slice(0,16).replace('T',' ')
+  };
+  const image = await renderCard(buildCloseCardHTML(sample));
+  if (!image) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, image, win ? '🧪 Win card test' : '🧪 Loss card test');
+  res.json({ ok: sent, chatId, cardSize: image.byteLength, variant: win ? 'WIN' : 'LOSS' });
+});
+
+// ─── TEST: Render SL update card and send to Telegram ──────
+app.get('/test-sl-card', async (req, res) => {
+  const chatId = req.query.chat || ADMIN_CHAT_ID;
+  const sample = {
+    symbol: 'XAUUSD', direction: 'BUY', ticket: '12345678',
+    entry: '3350.45', new_sl: '3350.50', open_pnl: '+$28.40',
+    be_text: 'Stop moved to Break-Even — trade is now risk-free',
+    time: new Date().toISOString().slice(0,16).replace('T',' ')
+  };
+  const image = await renderCard(buildSLUpdateCardHTML(sample));
+  if (!image) return res.status(500).json({ ok: false, error: 'render failed' });
+  const sent = await sendPhotoToChat(chatId, image, '🧪 SL update test');
   res.json({ ok: sent, chatId, cardSize: image.byteLength });
 });
 
@@ -2087,62 +2284,73 @@ Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation
             }
         }
 
-                        // ─── 7. TRADE_SIGNAL ──────────────────────────────────────
-        if (type === 'TRADE_SIGNAL') {
-            if ((d.source || '').toUpperCase() !== 'MASTER') {
-                console.log('📥 Blocked non-MASTER TRADE_SIGNAL:', d.source);
-                return res.send('NON_MASTER_BLOCKED');
-            }
-            try {
-                // Display both fields safely
-                const lotDisplay = d.lot !== undefined ? d.lot : 'N/A';
-                const riskDisplay = d.riskPercent !== undefined ? `${d.riskPercent}%` : 'N/A';
+                       // ─── 6. TRADE_CLOSE ───────────────────────────────────────
+if (type === 'TRADE_CLOSE') {
+    if ((d.source || '').toUpperCase() !== 'MASTER') {
+        console.log('📥 Blocked non-MASTER TRADE_CLOSE:', d.source);
+        return res.send('NON_MASTER_BLOCKED');
+    }
+    try {
+        const profit = parseFloat(d.profit || 0);
+        const profitStr = (profit >= 0 ? '+' : '-') + '$' + Math.abs(profit).toFixed(2);
+        const msg = `🦉 <b>TRADE CLOSED</b>\n${d.result} — ${d.symbol}\nP&L: <b>${profitStr}</b>\nReason: ${d.reason}\nTicket: ${d.ticket}`;
+        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
+        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
 
-                const premiumMsg = `
-🦉 ULUKA PREMIUM HOOT
-Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
-Symbol: ${d.symbol}
-Strategy: ${d.strategy}
-Entry: ${d.entry}
-SL: ${d.sl}
-TP1: ${d.tp1} RR 1:${d.rr1}
-TP2: ${d.tp2} RR 1:${d.rr2}
-TP3: ${d.tp3} RR 1:${d.rr3}
-Lot: ${lotDisplay}
-Risk (Account %): ${riskDisplay}
-Ticket: ${d.ticket}
-                `;
-                const freeMsg = `
-🦉 FREE HOOT
-${d.action} on ${d.symbol}
-TP1: ${d.tp1}
-💎 Join Premium for full levels
-                `;
-                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
-                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
-                return res.send('HOOT_SENT');
-            } catch(e) {
-                console.error('🔥 TRADE_SIGNAL error:', e.message);
-                return res.status(500).send('ERROR');
-            }
+        // ─── Render + send CLOSE card to both groups ───
+        const cardData = {
+            symbol: d.symbol,
+            direction: d.direction || d.action,
+            result: d.result,
+            reason: d.reason,
+            profit: profit,
+            daily_pnl: d.daily_pnl,
+            ticket: d.ticket,
+            health: d.health,
+            time: d.time
+        };
+        const closeImg = await renderCard(buildCloseCardHTML(cardData));
+        if (closeImg) {
+            const caption = `${profit > 0 ? '✅' : '❌'} <b>${d.result} — ${d.symbol}</b> · ${profitStr}`;
+            if (PREMIUM_GROUP_ID) await sendPhotoToChat(PREMIUM_GROUP_ID, closeImg, caption);
+            if (FREE_GROUP_ID) await sendPhotoToChat(FREE_GROUP_ID, closeImg, caption);
         }
 
-        // ─── 8. POSITION_UPDATE ──────────────────────────────────
-       if (type === 'POSITION_UPDATE') {
-    // 🔥 BLOCK ANYTHING THAT IS NOT MASTER
+        return res.send('CLOSE_OK');
+    } catch(e) {
+        console.error('🔥 TRADE_CLOSE error:', e.message);
+        return res.status(500).send('ERROR');
+    }
+}
+
+       // ─── 8. POSITION_UPDATE ──────────────────────────────────
+if (type === 'POSITION_UPDATE') {
     if ((d.source || '').toUpperCase() !== 'MASTER') {
         console.log('📥 Blocked non-MASTER POSITION_UPDATE:', d.source);
         return res.send('NON_MASTER_BLOCKED');
     }
-            try {
-                const msg = `⚖️ POSITION UPDATE\n${d.symbol} ${d.direction}\nNew SL: ${d.new_sl}\n${d.be_text || ''}`;
-                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
-                return res.send('OK');
-            } catch(e) {
-                console.error('🔥 POSITION_UPDATE error:', e.message);
-                return res.status(500).send('ERROR');
-            }
+    try {
+        const msg = `⚖️ <b>POSITION UPDATE</b>\n${d.symbol} ${d.direction}\nNew SL: <b>${d.new_sl}</b>\n${d.be_text || ''}`;
+        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
+
+        // ─── Render + send SL UPDATE card to Premium only ───
+        const slImg = await renderCard(buildSLUpdateCardHTML({
+            symbol: d.symbol, direction: d.direction, ticket: d.ticket,
+            entry: d.entry, new_sl: d.new_sl, open_pnl: d.open_pnl,
+            be_text: d.be_text || (d.update_type === 'BE_SET' ? 'Stop moved to Break-Even — trade is now risk-free' : 'Trailing stop tightened'),
+            time: new Date().toISOString().slice(0,16).replace('T',' ')
+        }));
+        if (slImg && PREMIUM_GROUP_ID) {
+            await sendPhotoToChat(PREMIUM_GROUP_ID, slImg,
+                `🛡️ <b>SL UPDATED — ${d.symbol} #${d.ticket}</b>`);
         }
+
+        return res.send('OK');
+    } catch(e) {
+        console.error('🔥 POSITION_UPDATE error:', e.message);
+        return res.status(500).send('ERROR');
+    }
+}
 
         // ─── 9. GuardianAlert ────────────────────────────────────
         if (type === 'GuardianAlert') {
