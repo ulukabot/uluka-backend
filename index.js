@@ -4126,9 +4126,16 @@ app.all('/cron/generate-daily-content', async (req, res) => {
       `SELECT symbol, action, pnl, result, strategy FROM trade_log WHERE time::date = $1`,
       [todayStr]
     );
-    const trades = t.rows;
+        const trades = t.rows;
     if (trades.length === 0) {
       return res.json({ ok: true, skipped: 'No trades today' });
+    }
+
+    // ✅ GROWTH-PHASE FILTER: Skip generation on losing or flat days
+    const preNetPnl = trades.reduce((sum, r) => sum + parseFloat(r.pnl || 0), 0);
+    if (preNetPnl <= 0) {
+      console.log(`📉 Net PnL ${preNetPnl.toFixed(2)} on ${todayStr} — skipping content generation`);
+      return res.json({ ok: true, skipped: 'Net negative or flat day', netPnl: preNetPnl });
     }
 
     let wins = 0, losses = 0, totalPnl = 0, bestPnl = 0, bestSym = '—', bestAct = '';
