@@ -4112,6 +4112,57 @@ app.all('/cron/cot-report', async (req, res) => {
   res.json({ ok: true, pairs: results.length, results });
 });
 
+// ─── PUBLIC URL helper ──────────────────────────────────
+const PUBLIC_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : 'https://uluka-backend-production.up.railway.app';
+
+// ─── Platform config for Telegram draft alerts ──────────
+function getPlatformConfig(platformLower) {
+  if (platformLower.includes('twitter') || platformLower.includes('x'))
+    return { icon: '🐦', label: 'X (Twitter)', composerUrl: 'https://x.com/compose/post' };
+  if (platformLower.includes('linkedin'))
+    return { icon: '💼', label: 'LinkedIn', composerUrl: 'https://www.linkedin.com/feed/?shareActive=true' };
+  if (platformLower.includes('instagram'))
+    return { icon: '📸', label: 'Instagram', composerUrl: 'https://www.instagram.com/' };
+  return null; // Telegram auto-publishes — no admin preview needed
+}
+
+// ─── Send draft to admin's Telegram with action buttons ─
+async function sendDraftToAdmin(draft) {
+  if (!ADMIN_CHAT_ID) return false;
+  const platformLower = (draft.platform || '').toLowerCase();
+  const config = getPlatformConfig(platformLower);
+  if (!config) return false;
+
+  const preview = draft.content.length > 800
+    ? draft.content.substring(0, 800) + '…'
+    : draft.content;
+
+  const escaped = String(preview)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const msg =
+    `${config.icon} <b>${config.label} Draft Ready</b>\n` +
+    `<i>#${draft.id} · ${draft.date || ''}</i>\n\n` +
+    `<pre>${escaped}</pre>`;
+
+  // Build inline keyboard
+  const copyButton = draft.content.length <= 256
+    ? { text: '📋 Copy', copy_text: { text: draft.content } }
+    : null;
+  const openButton = { text: `🔗 Open ${config.label}`, url: config.composerUrl };
+
+  const row1 = copyButton ? [copyButton, openButton] : [openButton];
+  const row2 = [
+    { text: '✅ Approve', url: `${PUBLIC_URL}/admin/approve/${draft.id}?secret=${ADMIN_SECRET}` },
+    { text: '❌ Reject',  url: `${PUBLIC_URL}/admin/reject/${draft.id}?secret=${ADMIN_SECRET}` }
+  ];
+
+  const keyboard = { inline_keyboard: [row1, row2] };
+  return await sendToTelegram(ADMIN_CHAT_ID, msg, keyboard);
+}
+
 // ═══════════════════════════════════════════════════════════
 // CRON: Generate Daily Marketing Content
 // ═══════════════════════════════════════════════════════════
@@ -4187,11 +4238,21 @@ app.all('/cron/generate-daily-content', async (req, res) => {
         post = post.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
         post = post.replace(/\\n/g, '\n');
 
-        if (post) {
-          await pool.query(
-            `INSERT INTO post_queue (date, platform, content, status) VALUES ($1, $2, $3, 'PENDING_REVIEW')`,
+                if (post) {
+          const insertRes = await pool.query(
+            `INSERT INTO post_queue (date, platform, content, status) VALUES ($1, $2, $3, 'PENDING_REVIEW') RETURNING id`,
             [dateStr, platform, post]
           );
+          const newId = insertRes.rows[0]?.id;
+          // ✅ Push draft to admin's Telegram
+          if (newId) {
+            await sendDraftToAdmin({
+              id: newId,
+              platform: platform,
+              content: post,
+              date: dateStr
+            }).catch(e => console.error('sendDraftToAdmin failed:', e.message));
+          }
         }
         await new Promise(r => setTimeout(r, 1000));
       } catch (e) {
