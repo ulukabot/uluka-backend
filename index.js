@@ -4960,6 +4960,69 @@ app.get('/test-cftc', async (req, res) => {
   }
 });
 
+// ─── TEST: Raw Claude lead report response ────────────
+app.get('/test-lead-raw', async (req, res) => {
+  if (req.query.secret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  if (!CLAUDE_API_KEY) {
+    return res.status(500).json({ ok: false, error: 'CLAUDE_API_KEY not set' });
+  }
+
+  const prompt =
+    `Search for people actively looking for forex trading solutions right now.\n\n` +
+    `Search queries:\n1. 'looking for forex EA recommendation reddit 2026'\n` +
+    `2. 'failed FTMO challenge looking for help twitter'\n` +
+    `3. 'best forex signal service recommendation forum'\n` +
+    `4. 'automated forex trading system review 2026'\n` +
+    `5. 'prop firm EA forex recommendation'\n\n` +
+    `For each lead: username, thread link, context, urgency, suggested approach.\n` +
+    `Only include leads with real username or thread link. Do not invent.\n\n` +
+    `Respond ONLY with JSON:\n{"hot_leads":[{"platform":"...","username":"...","thread_link":"...","context":"max 20 words","intent":"BUYING|RESEARCHING|COMPLAINING","urgency":"HIGH|MEDIUM|LOW","suggested_approach":"max 15 words"}],"total_found":int}`;
+
+  try {
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'web-search-2025-03-05',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        system: 'You are a JSON-only responder.',
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const status = aiRes.status;
+    const aiData = await aiRes.json();
+
+    let rawText = '';
+    if (aiData.content) {
+      for (const block of aiData.content) {
+        if (block.type === 'text') rawText += block.text + '\n';
+      }
+    }
+
+    res.json({
+      ok: true,
+      httpStatus: status,
+      rawTextLength: rawText.length,
+      rawText: rawText.substring(0, 2000),  // first 2000 chars
+      contentBlocks: Array.isArray(aiData.content) ? aiData.content.length : 0
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ─── Test endpoints ───────────────────────────────────────
+app.get('/test-cot', async (req, res) => {
+
 // ─── Test endpoints ───────────────────────────────────────
 app.get('/test-cot', async (req, res) => {
   const r = await fetch(`http://localhost:${PORT}/cron/cot-report?secret=${process.env.CRON_SECRET}`);
