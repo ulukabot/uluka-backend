@@ -4139,141 +4139,111 @@ app.all('/cron/cot-report', async (req, res) => {
   let report = '📊 <b>Weekly COT Intelligence Report</b>\n';
   report += new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) + '\n\n';
 
-    for (const pair of pairs) {
+  // Map broker symbols → official CFTC contract names
+  const COT_CONTRACTS = {
+    'EUR': 'EURO FX - CHICAGO MERCANTILE EXCHANGE',
+    'GBP': 'BRITISH POUND - CHICAGO MERCANTILE EXCHANGE',
+    'JPY': 'JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE',
+    'CHF': 'SWISS FRANC - CHICAGO MERCANTILE EXCHANGE',
+    'CAD': 'CANADIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE',
+    'AUD': 'AUSTRALIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE',
+    'NZD': 'NZ DOLLAR - CHICAGO MERCANTILE EXCHANGE',
+    'XAU': 'GOLD - COMMODITY EXCHANGE INC.',
+    'GOLD': 'GOLD - COMMODITY EXCHANGE INC.',
+    'XAG': 'SILVER - COMMODITY EXCHANGE INC.',
+    'SILVER': 'SILVER - COMMODITY EXCHANGE INC.'
+  };
+
+  for (const pair of pairs) {
     const clean = pair.trim();
     const base = clean.substring(0, 3);
-
-    // Map broker symbols → actual CFTC COT contract names
-    const COT_CONTRACTS = {
-      'EUR': 'EURO FX - CHICAGO MERCANTILE EXCHANGE',
-      'GBP': 'BRITISH POUND - CHICAGO MERCANTILE EXCHANGE',
-      'JPY': 'JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE',
-      'CHF': 'SWISS FRANC - CHICAGO MERCANTILE EXCHANGE',
-      'CAD': 'CANADIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE',
-      'AUD': 'AUSTRALIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE',
-      'NZD': 'NZ DOLLAR - CHICAGO MERCANTILE EXCHANGE',
-      'XAU': 'GOLD - COMMODITY EXCHANGE INC.',
-      'GOLD': 'GOLD - COMMODITY EXCHANGE INC.',
-      'XAG': 'SILVER - COMMODITY EXCHANGE INC.',
-      'SILVER': 'SILVER - COMMODITY EXCHANGE INC.'
-    };
     const contractName = COT_CONTRACTS[base] || base;
 
     try {
-      // Ask for a simple line-based format — much more reliable than JSON
-      // when browser search is involved
-      const prompt =
-        `Search the web for the latest CFTC Commitments of Traders (COT) report for the contract "${contractName}".\n` +
-        `Look for data from the most recent weekly report (within the last 14 days).\n` +
-        `Sources: cftc.gov, barchart.com/forex, investing.com, tradingster.com\n\n` +        `Respond with EXACTLY these 5 lines, no other text, no markdown:\n` +
-        `SENTIMENT: BULLISH or BEARISH or NEUTRAL\n` +
-        `TREND: INCREASING_LONGS or INCREASING_SHORTS or STABLE\n` +
-        `EXTREME: true or false\n` +
-        `CONTRARIAN: true or false\n` +
-        `SUMMARY: one short sentence, max 15 words`;
+      const url = `https://publicreporting.cftc.gov/resource/6dca-aqww.json?$where=market_and_exchange_names='${encodeURIComponent(contractName)}'&$order=report_date_as_yyyy_mm_dd DESC&$limit=2`;
+      const r = await fetch(url);
 
-      let rawText = '';
-
-      // ✅ Try Groq first (free) with browser_search
-      try {
-        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GROQ_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'openai/gpt-oss-120b',
-            messages: [
-              { role: 'system', content: 'You are a financial data extractor. Output ONLY the requested fields, one per line. No extra commentary, no markdown.' },
-              { role: 'user', content: prompt }
-            ],
-            max_tokens: 400,
-            temperature: 0.3,
-            reasoning_effort: 'low',
-            tools: [{ type: 'browser_search' }],
-            tool_choice: 'auto'
-          })
-        });
-
-        if (groqRes.ok) {
-          const groqData = await groqRes.json();
-          rawText = groqData.choices?.[0]?.message?.content || '';
-        } else {
-          const errText = await groqRes.text();
-          console.error(`Groq COT HTTP ${groqRes.status} for ${clean}:`, errText.substring(0, 300));
-        }
-      } catch (e) {
-        console.error(`Groq COT error for ${clean}:`, e.message);
+      if (!r.ok) {
+        console.error(`CFTC HTTP ${r.status} for ${clean}`);
+        report += `⚪ <b>${clean}</b>: Data unavailable\n\n`;
+        continue;
       }
 
-      let cot = { cot_sentiment: 'NEUTRAL', summary: 'Data unavailable', extreme: false, contrarian_signal: false };
-
-      // Parse the plain-text Groq output
-      if (rawText) {
-        const get = (key) => {
-          const re = new RegExp('^' + key + ':\\s*(.+)$', 'im');
-          const m = rawText.match(re);
-          return m ? m[1].trim().replace(/[*`]/g, '') : '';
-        };
-        const sent = get('SENTIMENT').toUpperCase();
-        if (sent === 'BULLISH' || sent === 'BEARISH' || sent === 'NEUTRAL') {
-          cot.cot_sentiment = sent;
-          cot.extreme = /true/i.test(get('EXTREME'));
-          cot.contrarian_signal = /true/i.test(get('CONTRARIAN'));
-          cot.summary = get('SUMMARY') || 'Data unavailable';
-        } else {
-          console.log(`Groq COT for ${clean} returned unparseable output — will fall back.`);
-          rawText = ''; // force fallback
-        }
+      const data = await r.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        report += `⚪ <b>${clean}</b>: Data unavailable\n\n`;
+        continue;
       }
 
-      // ⚠️ Fall back to Claude if Groq failed or output was unparseable
-      if (!rawText && CLAUDE_API_KEY) {
-        console.log(`⚠️ Groq COT failed for ${clean} — falling back to Claude`);
-                const claudePrompt =
-          `Search for the latest CFTC Commitments of Traders (COT) report for the contract "${contractName}".\n` +
-          `Look on: cftc.gov, barchart.com/forex, investing.com/forex, or tradingster.com\n\n` +
-          `Extract:\n- Net non-commercial positioning\n- Increasing or decreasing\n- Commercials opposing (contrarian signal)\n\n` +
-          `Respond ONLY with JSON:\n{"cot_sentiment":"BULLISH"|"BEARISH"|"NEUTRAL","net_position":int,"trend":"INCREASING_LONGS"|"INCREASING_SHORTS"|"STABLE","extreme":bool,"contrarian_signal":bool,"summary":"one sentence max 15 words","report_date":"date or unknown"}`;
+      const latest = data[0];
 
-        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'x-api-key': CLAUDE_API_KEY,
-            'anthropic-version': '2023-06-01',
-            'anthropic-beta': 'web-search-2025-03-05',
-            'content-type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 250,
-            system: 'You are a JSON-only responder.',
-            tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-            messages: [{ role: 'user', content: claudePrompt }]
-          })
-        });
-        const aiData = await aiRes.json();
-        let text = '';
-        if (aiData.content) for (const block of aiData.content) if (block.type === 'text') text = block.text;
-        const match = text.match(/\{[\s\S]*\}/);
-        if (match) {
-          try { cot = JSON.parse(match[0]); } catch(e) {}
+      // Extract key numbers
+      const ncLong      = parseInt(latest.noncomm_positions_long_all  || 0);
+      const ncShort     = parseInt(latest.noncomm_positions_short_all || 0);
+      const cLong       = parseInt(latest.comm_positions_long_all     || 0);
+      const cShort      = parseInt(latest.comm_positions_short_all    || 0);
+      const oi          = parseInt(latest.open_interest_all           || 0);
+      const chgNcLong   = parseInt(latest.change_in_noncomm_long_all  || 0);
+      const chgNcShort  = parseInt(latest.change_in_noncomm_short_all || 0);
+      const reportDate  = (latest.report_date_as_yyyy_mm_dd || '').split('T')[0] || 'unknown';
+
+      // Net positions
+      const netSpec = ncLong - ncShort;      // speculators net
+      const netComm = cLong - cShort;        // commercials net
+      const netChg  = chgNcLong - chgNcShort; // change in spec net position
+
+      // Sentiment from net position as % of open interest
+      const netPctOfOI = oi > 0 ? (netSpec / oi) * 100 : 0;
+
+      let sentiment = 'NEUTRAL';
+      let icon = '⚪';
+      if      (netPctOfOI >  5) { sentiment = 'BULLISH'; icon = '🟢'; }
+      else if (netPctOfOI < -5) { sentiment = 'BEARISH'; icon = '🔴'; }
+
+      // Extreme if net position is >30% of open interest
+      const extreme = Math.abs(netPctOfOI) > 30;
+
+      // Contrarian signal: commercials are on the opposite side of speculators
+      const contrarian = (netSpec > 0 && netComm < 0) || (netSpec < 0 && netComm > 0);
+
+      // Trend from week-over-week change
+      let trend = 'STABLE';
+      if      (netChg >  5000) trend = 'INCREASING_LONGS';
+      else if (netChg < -5000) trend = 'INCREASING_SHORTS';
+
+      // Human-readable summary
+      const dir = netSpec >= 0 ? 'long' : 'short';
+      let summary = `Speculators net ${dir} ${Math.abs(netSpec).toLocaleString()}`;
+      if      (trend === 'INCREASING_LONGS')  summary += ' (adding longs)';
+      else if (trend === 'INCREASING_SHORTS') summary += ' (adding shorts)';
+      else                                     summary += ' (stable)';
+
+      report += `${icon} <b>${clean}</b>: ${summary}\n`;
+      report += `   Net: ${netSpec >= 0 ? '+' : ''}${netSpec.toLocaleString()} (${netPctOfOI.toFixed(1)}% of OI)\n`;
+      if (extreme)    report += `   ⚠️ Extreme positioning\n`;
+      if (contrarian) report += `   🔄 Commercials opposing\n`;
+      report += `   📅 ${reportDate}\n\n`;
+
+      results.push({
+        pair: clean,
+        cot: {
+          cot_sentiment: sentiment,
+          net_position: netSpec,
+          net_pct_of_oi: parseFloat(netPctOfOI.toFixed(2)),
+          trend: trend,
+          extreme: extreme,
+          contrarian_signal: contrarian,
+          summary: summary,
+          report_date: reportDate
         }
-      }
+      });
 
-      const icon = cot.cot_sentiment === 'BULLISH' ? '🟢' : cot.cot_sentiment === 'BEARISH' ? '🔴' : '⚪';
-      report += `${icon} <b>${clean}</b>: ${cot.summary || '—'}\n`;
-      if (cot.extreme)           report += `   ⚠️ Extreme positioning\n`;
-      if (cot.contrarian_signal) report += `   🔄 Contrarian signal\n`;
-      report += `\n`;
-      results.push({ pair: clean, cot });
     } catch (e) {
       console.error(`COT error for ${clean}:`, e.message);
-      report += `⚪ <b>${clean}</b>: Data unavailable\n\n`;
+      report += `⚪ <b>${clean}</b>: Error\n\n`;
     }
   }
-  report += `<i>Source: CFTC via AI search</i>`;
+  report += `<i>Source: CFTC.gov (official government data)</i>`;
 
   if (ADMIN_CHAT_ID)    await sendToTelegram(ADMIN_CHAT_ID, report);
   if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, report);
