@@ -63,7 +63,7 @@ function sanitizeForTelegram(text) {
   // 1. Bold: **text** → <b>text</b>
   out = out.replace(/\*\*([^*\n]+?)\*\*/g, '<b>$1</b>');
 
-  // 2. Italic: *text* → <i>text</i>  (but NOT if part of **)
+  // 2. Italic: *text* → <i>text</i>
   out = out.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<i>$2</i>');
 
   // 3. Inline code: `text` → <code>text</code>
@@ -72,25 +72,13 @@ function sanitizeForTelegram(text) {
   // 4. Headings: ### Title → <b>Title</b>
   out = out.replace(/^#{1,6}\s*(.+)$/gm, '<b>$1</b>');
 
-  // 5. Strip markdown bullets: leading "- " or "* " (keep the text)
+  // 5. Markdown bullets "- " or "* " → "• "
   out = out.replace(/^[\-\*]\s+/gm, '• ');
 
-  // 6. Escape any stray HTML angle brackets that aren't our tags
-  //    (order matters — only escape < > that aren't part of <b>, <i>, <code>, etc.)
-  out = out.replace(/<(?!(b|i|code|pre|a)\b)/gi, '&lt;');
-  out = out.replace(/(?<!<\/(b|i|code|pre|a))>/gi, (m, offset, str) => {
-    // Only escape > if it's not closing one of our allowed tags
-    const before = str.substring(Math.max(0, offset - 20), offset);
-    if (/<\/(b|i|code|pre|a)$/i.test(before) || /<(b|i|code|pre|a)\b[^>]*$/i.test(before)) {
-      return '>';
-    }
-    return '&gt;';
-  });
+  // 6. Remove any HTML tags except our safe whitelist
+  out = out.replace(/<(?!\/?(?:b|i|code|pre|a)\b)[^>]*>/gi, '');
 
-  // 7. Trim trailing whitespace
-  out = out.trim();
-
-  return out;
+  return out.trim();
 }
 
 // ═══════════════════════════════════════════════════════════
