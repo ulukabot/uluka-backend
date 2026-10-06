@@ -4605,38 +4605,142 @@ app.all('/cron/weekly-lead-report', async (req, res) => {
 
   try {
     const prompt =
-      `Search for people actively looking for forex trading solutions right now.\n\n` +
-      `Search queries:\n1. 'looking for forex EA recommendation reddit 2026'\n` +
-      `2. 'failed FTMO challenge looking for help twitter'\n` +
-      `3. 'best forex signal service recommendation forum'\n` +
-      `4. 'automated forex trading system review 2026'\n` +
-      `5. 'prop firm EA forex recommendation'\n\n` +
-      `For each lead: username, thread link, context, urgency, suggested approach.\n` +
-      `Only include leads with real username or thread link. Do not invent.\n\n` +
-      `Respond ONLY with JSON:\n{"hot_leads":[{"platform":"...","username":"...","thread_link":"...","context":"max 20 words","intent":"BUYING|RESEARCHING|COMPLAINING","urgency":"HIGH|MEDIUM|LOW","suggested_approach":"max 15 words"}],"total_found":int}`;
+      `Search the web for people actively looking for forex trading solutions this week.\n\n` +
+      `Search for posts/tweets/threads on: reddit, twitter/X, forexfactory, forexpeacearmy.\n\n` +
+      `Topics to look for:\n` +
+      `- People asking for forex EA recommendations\n` +
+      `- People who failed prop firm challenges looking for help\n` +
+      `- People looking for signal services or automated systems\n` +
+      `- People reviewing or comparing trading EAs\n\n` +
+      `Return AT MOST 5 leads. For each lead, output EXACTLY this block format:\n\n` +
+      `LEAD\n` +
+      `PLATFORM: reddit or twitter or forexfactory etc\n` +
+      `USERNAME: actual username or "unknown"\n` +
+      `LINK: full URL to the post/thread\n` +
+      `CONTEXT: brief 1-sentence description (max 20 words)\n` +
+      `INTENT: BUYING or RESEARCHING or COMPLAINING\n` +
+      `URGENCY: HIGH or MEDIUM or LOW\n` +
+      `APPROACH: suggested reply approach (max 15 words)\n\n` +
+      `After all leads, output a final line: TOTAL: <number>\n\n` +
+      `Only include leads with real usernames or real links. Do NOT invent.\n` +
+      `Output ONLY the blocks above. No extra text, no markdown.`;
 
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 500,
-        system: 'You are a JSON-only responder.',
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const aiData = await aiRes.json();
-    let text = '';
-    if (aiData.content) for (const block of aiData.content) if (block.type === 'text') text = block.text;
-    const match = text.match(/\{[\s\S]*\}/);
-    const leads = match ? JSON.parse(match[0]) : { hot_leads: [], total_found: 0 };
+    let rawText = '';
+    let leads = { hot_leads: [], total_found: 0 };
+    let provider = 'none';
 
+    // ✅ Try Groq first (free) with browser_search
+    try {
+      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-120b',
+          messages: [
+            { role: 'system', content: 'You output structured data in the exact format requested. No extra commentary.' },
+            { role: 'user', content: prompt }
+          ],
+          max_tokens: 1500,
+          temperature: 0.5,
+          reasoning_effort: 'low',
+          tools: [{ type: 'browser_search' }],
+          tool_choice: 'auto'
+        })
+      });
+
+      if (groqRes.ok) {
+        const groqData = await groqRes.json();
+        rawText = groqData.choices?.[0]?.message?.content || '';
+      } else {
+        const errText = await groqRes.text();
+        console.error('Groq lead HTTP', groqRes.status, errText.substring(0, 300));
+      }
+    } catch (e) {
+      console.error('Groq lead error:', e.message);
+    }
+
+    // Parse the line-based Groq output
+    if (rawText && /\bLEAD\b/i.test(rawText)) {
+      const blocks = rawText.split(/\bLEAD\b/i).slice(1); // skip anything before first LEAD
+      for (const block of blocks) {
+        const get = (key) => {
+          const re = new RegExp('^\\s*' + key + ':\\s*(.+?)\\s*$', 'im');
+          const m = block.match(re);
+          return m ? m[1].trim().replace(/[*`]/g, '') : '';
+        };
+        const platform = get('PLATFORM');
+        const username = get('USERNAME');
+        const link = get('LINK');
+        if (!platform && !username && !link) continue;
+
+        leads.hot_leads.push({
+          platform: platform || 'unknown',
+          username: username || 'unknown',
+          thread_link: link || '',
+          context: get('CONTEXT') || '',
+          intent: get('INTENT') || 'RESEARCHING',
+          urgency: (get('URGENCY') || 'LOW').toUpperCase(),
+          suggested_approach: get('APPROACH') || ''
+        });
+      }
+      const totalMatch = rawText.match(/TOTAL:\s*(\d+)/i);
+      leads.total_found = totalMatch ? parseInt(totalMatch[1]) : leads.hot_leads.length;
+
+      if (leads.hot_leads.length > 0) {
+        provider = 'groq';
+      } else {
+        rawText = ''; // force fallback
+      }
+    } else {
+      rawText = ''; // force fallback
+    }
+
+    // ⚠️ Fall back to Claude if Groq failed or unparseable
+    if (!rawText && CLAUDE_API_KEY) {
+      console.log('⚠️ Groq lead report failed — falling back to Claude');
+      const claudePrompt =
+        `Search for people actively looking for forex trading solutions right now.\n\n` +
+        `Search queries:\n1. 'looking for forex EA recommendation reddit 2026'\n` +
+        `2. 'failed FTMO challenge looking for help twitter'\n` +
+        `3. 'best forex signal service recommendation forum'\n` +
+        `4. 'automated forex trading system review 2026'\n` +
+        `5. 'prop firm EA forex recommendation'\n\n` +
+        `For each lead: username, thread link, context, urgency, suggested approach.\n` +
+        `Only include leads with real username or thread link. Do not invent.\n\n` +
+        `Respond ONLY with JSON:\n{"hot_leads":[{"platform":"...","username":"...","thread_link":"...","context":"max 20 words","intent":"BUYING|RESEARCHING|COMPLAINING","urgency":"HIGH|MEDIUM|LOW","suggested_approach":"max 15 words"}],"total_found":int}`;
+
+      const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'web-search-2025-03-05',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 500,
+          system: 'You are a JSON-only responder.',
+          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+          messages: [{ role: 'user', content: claudePrompt }]
+        })
+      });
+      const aiData = await aiRes.json();
+      let text = '';
+      if (aiData.content) for (const block of aiData.content) if (block.type === 'text') text = block.text;
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          leads = JSON.parse(match[0]);
+          provider = 'claude';
+        } catch(e) {}
+      }
+    }
+
+    // Build report
     const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     let report = `🎯 <b>Uluka Lead Intelligence Report</b>\n${dateStr}\n`;
     report += `═══════════════════════\n\n`;
@@ -4657,9 +4761,9 @@ app.all('/cron/weekly-lead-report', async (req, res) => {
          lead.context || '', lead.suggested_approach || '', lead.urgency || 'LOW']
       );
     }
-    report += `<i>Powered by Claude AI</i>`;
+    report += `<i>Provider: ${provider}</i>`;
     await sendAdminAlert(report);
-    res.json({ ok: true, count: leads.total_found || 0 });
+    res.json({ ok: true, count: leads.total_found || 0, provider });
   } catch (err) {
     console.error('weekly-lead-report error:', err.message);
     res.status(500).json({ ok: false, error: err.message });
