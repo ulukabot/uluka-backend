@@ -4419,32 +4419,75 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
   try {
     const pairs = (process.env.TARGET_PAIRS || 'EURUSD,GBPUSD,XAUUSD').split(',').slice(0, 3).join(', ');
     const prompt =
-      `Search for the forex market outlook this week for: ${pairs}.\n` +
-      `Find key events: central bank decisions, economic data, geopolitical risks.\n\n` +
-      `Write a Monday LinkedIn market outlook post (professional, authoritative).\n` +
-      `Mention Uluka Ultra's AI-powered approach.\n` +
-      `Include: key pairs, major events, overall bias. End with CTA to follow.\n\n` +
+      `You are a professional forex market analyst writing a Monday LinkedIn post.\n\n` +
+      `Key pairs to cover: ${pairs}\n\n` +
+      `Instructions:\n` +
+      `- Write a market outlook post for this week (professional, authoritative tone)\n` +
+      `- Include: key pairs, major upcoming events (central bank decisions, economic data, geopolitical risks), overall bias\n` +
+      `- Mention Uluka Ultra's AI-powered approach\n` +
+      `- End with a CTA to follow\n` +
+      `- Use plain text with markdown formatting (## headers, bullets)\n` +
+      `- Do NOT wrap in JSON or HTML\n` +
+      `- Max 500 words\n\n` +
       `Respond with ONLY the post text.`;
 
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 500,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const aiData = await aiRes.json();
+    // ✅ Try Groq first (free) — uses browser_search tool
     let post = '';
-    if (aiData.content) for (const block of aiData.content) if (block.type === 'text') post = block.text;
-    post = post.replace(/```\w*\s*/gi, '').trim();
+    try {
+      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-120b',
+          messages: [
+            { role: 'system', content: 'You are a professional forex market analyst. Write only the post text.' },
+            { role: 'user', content: prompt }
+          ],
+          max_tokens: 900,
+          temperature: 0.7,
+          reasoning_effort: 'low',
+          tools: [{ type: 'browser_search' }],
+          tool_choice: 'auto'
+        })
+      });
+
+      if (groqRes.ok) {
+        const groqData = await groqRes.json();
+        post = groqData.choices?.[0]?.message?.content || '';
+      } else {
+        const errText = await groqRes.text();
+        console.error('Groq market outlook HTTP', groqRes.status, errText.substring(0, 300));
+      }
+    } catch (e) {
+      console.error('Groq market outlook error:', e.message);
+    }
+
+    // ⚠️ Fall back to Claude if Groq failed
+    if (!post && CLAUDE_API_KEY) {
+      console.log('⚠️ Groq market outlook failed — falling back to Claude');
+      const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'web-search-2025-03-05',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 500,
+          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const aiData = await aiRes.json();
+      if (aiData.content) for (const block of aiData.content) if (block.type === 'text') post = block.text;
+    }
+
+    post = (post || '').replace(/```\w*\s*/gi, '').trim();
 
     if (post) {
       await pool.query(
@@ -4453,7 +4496,7 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
       );
       await sendAdminAlert(`🌍 <b>Weekly Market Outlook Ready</b>\nCheck /admin/queue`);
     }
-    res.json({ ok: true, generated: !!post });
+    res.json({ ok: true, generated: !!post, provider: post ? 'ok' : 'none' });
   } catch (err) {
     console.error('weekly-market-outlook error:', err.message);
     res.status(500).json({ ok: false, error: err.message });
