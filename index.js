@@ -224,7 +224,7 @@ function buildOpenCardHTML(d) {
   const accent = isBuy ? '#00FF88' : '#FF5555';
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:50px 46px;
+                font-family:'Courier New',monospace;padding:40px 40px;
                 box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
                 display:flex;flex-direction:column;overflow:hidden;">
 
@@ -234,85 +234,81 @@ function buildOpenCardHTML(d) {
           <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
           <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">PREMIUM HOOT</div>
         </div>
-        <div style="font-size:60px;color:#F0B429;line-height:1;">🦉</div>
+        <div style="font-size:56px;color:#F0B429;line-height:1;">🦉</div>
       </div>
 
       <!-- MAIN HEADLINE -->
-      <div style="margin-top:32px;">
-        <div style="font-size:58px;font-weight:bold;color:${accent};letter-spacing:2px;line-height:1.1;">
+      <div style="margin-top:22px;">
+        <div style="font-size:54px;font-weight:bold;color:${accent};letter-spacing:2px;line-height:1.1;">
           ${d.action || ''} ${d.symbol || ''}
         </div>
-        <div style="font-size:22px;color:#8899BB;margin-top:16px;">
+        <div style="font-size:20px;color:#8899BB;margin-top:12px;">
           Strategy: <span style="color:#FFFFFF;font-weight:bold;">${d.strategy || '—'}</span>
         </div>
-        <div style="font-size:18px;color:#8899BB;margin-top:8px;">
+        <div style="font-size:17px;color:#8899BB;margin-top:6px;">
           Session: <span style="color:#FFFFFF;">${d.session || '—'}</span>
         </div>
       </div>
 
       <!-- STATS ROW -->
-      <div style="display:flex;justify-content:space-between;margin-top:26px;padding:18px 26px;
+      <div style="display:flex;justify-content:space-between;margin-top:20px;padding:14px 26px;
                   background:#060D1A;border-radius:14px;border:1px solid #1A304A;">
         <div style="text-align:center;flex:1;">
-          <div style="font-size:14px;color:#8899BB;letter-spacing:2px;">CONFIDENCE</div>
-          <div style="font-size:28px;color:#F0B429;font-weight:bold;margin-top:6px;">${d.conf || '—'}%</div>
+          <div style="font-size:13px;color:#8899BB;letter-spacing:2px;">CONFIDENCE</div>
+          <div style="font-size:26px;color:#F0B429;font-weight:bold;margin-top:4px;">${d.conf || '—'}%</div>
         </div>
         <div style="width:1px;background:#1A304A;"></div>
         <div style="text-align:center;flex:1;">
-          <div style="font-size:14px;color:#8899BB;letter-spacing:2px;">LOT SIZE</div>
-          <div style="font-size:28px;color:#FFFFFF;font-weight:bold;margin-top:6px;">${d.lot || '—'}</div>
+          <div style="font-size:13px;color:#8899BB;letter-spacing:2px;">LOT SIZE</div>
+          <div style="font-size:26px;color:#FFFFFF;font-weight:bold;margin-top:4px;">${d.lot || '—'}</div>
         </div>
         <div style="width:1px;background:#1A304A;"></div>
         <div style="text-align:center;flex:1;">
-          <div style="font-size:14px;color:#8899BB;letter-spacing:2px;">RISK</div>
-          <div style="font-size:28px;color:#FFFFFF;font-weight:bold;margin-top:6px;">${d.risk_pct || '—'}%</div>
+          <div style="font-size:13px;color:#8899BB;letter-spacing:2px;">RISK</div>
+          <div style="font-size:26px;color:#FFFFFF;font-weight:bold;margin-top:4px;">${d.risk_pct || '—'}%</div>
         </div>
       </div>
 
-      <!-- PRICE LEVELS — flex:1 so it fills remaining height, rows spread evenly -->
-      <div style="flex:1;min-height:0;display:flex;flex-direction:column;
-                  background:#060D1A;border-radius:14px;padding:22px 30px;
-                  border:1px solid #1A304A;margin-top:22px;">
-        <div style="font-size:14px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">PRICE LEVELS</div>
+      <!-- PRICE LEVELS -->
+      <div style="margin-top:18px;background:#060D1A;border-radius:14px;padding:16px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:6px;">PRICE LEVELS</div>
 
-        <div style="flex:1;display:flex;flex-direction:column;justify-content:space-evenly;">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1A304A;">
-            <span style="font-size:20px;color:#8899BB;">Entry</span>
-            <span style="font-size:24px;color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Entry</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
+        </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1A304A;">
-            <span style="font-size:20px;color:#FF5555;font-weight:bold;">Stop Loss</span>
-            <span style="font-size:24px;color:#FF5555;font-weight:bold;">${d.sl || '—'}</span>
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#FF5555;font-weight:bold;">Stop Loss</span>
+          <span style="font-size:22px;color:#FF5555;font-weight:bold;">${d.sl || '—'}</span>
+        </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1A304A;">
-            <span style="font-size:20px;color:#00FF88;font-weight:bold;">TP1</span>
-            <span style="font-size:24px;color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="font-size:15px;color:#8899BB;font-weight:normal;margin-left:6px;">RR 1:${d.rr1 || '—'}</span></span>
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#00FF88;font-weight:bold;">TP1</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="font-size:14px;color:#8899BB;font-weight:normal;margin-left:6px;">RR 1:${d.rr1 || '—'}</span></span>
+        </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1A304A;">
-            <span style="font-size:20px;color:#00FF88;font-weight:bold;">TP2</span>
-            <span style="font-size:24px;color:#00FF88;font-weight:bold;">${d.tp2 || '—'} <span style="font-size:15px;color:#8899BB;font-weight:normal;margin-left:6px;">RR 1:${d.rr2 || '—'}</span></span>
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#00FF88;font-weight:bold;">TP2</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.tp2 || '—'} <span style="font-size:14px;color:#8899BB;font-weight:normal;margin-left:6px;">RR 1:${d.rr2 || '—'}</span></span>
+        </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;">
-            <span style="font-size:20px;color:#00FF88;font-weight:bold;">TP3</span>
-            <span style="font-size:24px;color:#00FF88;font-weight:bold;">${d.tp3 || '—'} <span style="font-size:15px;color:#8899BB;font-weight:normal;margin-left:6px;">RR 1:${d.rr3 || '—'}</span></span>
-          </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;">
+          <span style="font-size:19px;color:#00FF88;font-weight:bold;">TP3</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.tp3 || '—'} <span style="font-size:14px;color:#8899BB;font-weight:normal;margin-left:6px;">RR 1:${d.rr3 || '—'}</span></span>
         </div>
       </div>
 
-      <!-- FOOTER -->
-      <div style="display:flex;justify-content:space-between;font-size:14px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:16px;margin-top:20px;">
+      <!-- FOOTER (pushed to bottom) -->
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
         <span>Ticket: ${d.ticket || '—'}</span>
         <span>${d.time || new Date().toISOString().slice(0,16).replace('T',' ')}</span>
       </div>
     </div>
   `;
 }
-
 // ─── HTML TEMPLATE — Free Open Card (teaser) ─────────────
 function buildFreeOpenCardHTML(d) {
   const isBuy = (d.action || '').toUpperCase() === 'BUY';
