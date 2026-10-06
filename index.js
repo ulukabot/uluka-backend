@@ -218,67 +218,90 @@ async function renderCard(htmlContent) {
   }
 }
 
-// ─── HTML TEMPLATE — Trade Open Card ─────────────────────
+// ─── HTML TEMPLATE — Trade Open Card (portrait) ──────────
 function buildOpenCardHTML(d) {
   const isBuy = (d.action || '').toUpperCase() === 'BUY';
   const accent = isBuy ? '#00FF88' : '#FF5555';
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
+                font-family:'Courier New',monospace;padding:60px 50px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
                 display:flex;flex-direction:column;justify-content:space-between;">
+
+      <!-- HEADER -->
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">PREMIUM HOOT</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">PREMIUM HOOT</div>
         </div>
-        <div style="font-size:32px;color:#F0B429;">🦉</div>
+        <div style="font-size:70px;color:#F0B429;line-height:1;">🦉</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
-        <div style="flex:1;">
-          <div style="font-size:26px;font-weight:bold;color:${accent};">
-            ${d.action || ''} ${d.symbol || ''}
-          </div>
-          <div style="font-size:14px;color:#8899BB;margin-top:8px;">
-            Strategy: <span style="color:#FFFFFF;">${d.strategy || '—'}</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Session: <span style="color:#FFFFFF;">${d.session || '—'}</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Confidence: <span style="color:#F0B429;">${d.conf || '—'}%</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Lot: <span style="color:#FFFFFF;">${d.lot || '—'}</span> |
-            Risk: <span style="color:#FFFFFF;">${d.risk_pct || '—'}%</span>
-          </div>
+
+      <!-- MAIN HEADLINE -->
+      <div style="margin-top:60px;">
+        <div style="font-size:64px;font-weight:bold;color:${accent};letter-spacing:2px;line-height:1.1;">
+          ${d.action || ''} ${d.symbol || ''}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
-          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">PRICE LEVELS</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Entry</span>
-            <span style="color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#FF5555;">SL</span>
-            <span style="color:#FF5555;font-weight:bold;">${d.sl || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#00FF88;">TP1</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr1 || '—'}</span></span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#00FF88;">TP2</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.tp2 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr2 || '—'}</span></span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#00FF88;">TP3</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.tp3 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr3 || '—'}</span></span>
-          </div>
+        <div style="font-size:24px;color:#8899BB;margin-top:20px;">
+          Strategy: <span style="color:#FFFFFF;font-weight:bold;">${d.strategy || '—'}</span>
+        </div>
+        <div style="font-size:20px;color:#8899BB;margin-top:12px;">
+          Session: <span style="color:#FFFFFF;">${d.session || '—'}</span>
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:10px;margin-top:14px;">
+
+      <!-- STATS ROW -->
+      <div style="display:flex;justify-content:space-between;margin-top:40px;padding:24px 30px;
+                  background:#060D1A;border-radius:14px;border:1px solid #1A304A;">
+        <div style="text-align:center;flex:1;">
+          <div style="font-size:16px;color:#8899BB;letter-spacing:2px;">CONFIDENCE</div>
+          <div style="font-size:32px;color:#F0B429;font-weight:bold;margin-top:8px;">${d.conf || '—'}%</div>
+        </div>
+        <div style="width:1px;background:#1A304A;"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="font-size:16px;color:#8899BB;letter-spacing:2px;">LOT SIZE</div>
+          <div style="font-size:32px;color:#FFFFFF;font-weight:bold;margin-top:8px;">${d.lot || '—'}</div>
+        </div>
+        <div style="width:1px;background:#1A304A;"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="font-size:16px;color:#8899BB;letter-spacing:2px;">RISK</div>
+          <div style="font-size:32px;color:#FFFFFF;font-weight:bold;margin-top:8px;">${d.risk_pct || '—'}%</div>
+        </div>
+      </div>
+
+      <!-- PRICE LEVELS -->
+      <div style="background:#060D1A;border-radius:14px;padding:30px 40px;border:1px solid #1A304A;margin-top:30px;">
+        <div style="font-size:16px;color:#8899BB;letter-spacing:4px;margin-bottom:24px;">PRICE LEVELS</div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:24px;color:#8899BB;">Entry</span>
+          <span style="font-size:28px;color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:24px;color:#FF5555;font-weight:bold;">Stop Loss</span>
+          <span style="font-size:28px;color:#FF5555;font-weight:bold;">${d.sl || '—'}</span>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;">
+          <span style="font-size:24px;color:#00FF88;font-weight:bold;">TP1</span>
+          <span style="font-size:28px;color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="font-size:18px;color:#8899BB;font-weight:normal;margin-left:8px;">RR 1:${d.rr1 || '—'}</span></span>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;">
+          <span style="font-size:24px;color:#00FF88;font-weight:bold;">TP2</span>
+          <span style="font-size:28px;color:#00FF88;font-weight:bold;">${d.tp2 || '—'} <span style="font-size:18px;color:#8899BB;font-weight:normal;margin-left:8px;">RR 1:${d.rr2 || '—'}</span></span>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;">
+          <span style="font-size:24px;color:#00FF88;font-weight:bold;">TP3</span>
+          <span style="font-size:28px;color:#00FF88;font-weight:bold;">${d.tp3 || '—'} <span style="font-size:18px;color:#8899BB;font-weight:normal;margin-left:8px;">RR 1:${d.rr3 || '—'}</span></span>
+        </div>
+      </div>
+
+      <!-- FOOTER -->
+      <div style="display:flex;justify-content:space-between;font-size:16px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:24px;margin-top:30px;">
         <span>Ticket: ${d.ticket || '—'}</span>
         <span>${d.time || new Date().toISOString().slice(0,16).replace('T',' ')}</span>
       </div>
