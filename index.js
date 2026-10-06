@@ -4835,6 +4835,53 @@ app.get('/test-groq', async (req, res) => {
   });
 });
 
+// ─── TEST: Explore CFTC COT API response ──────────────
+app.get('/test-cftc', async (req, res) => {
+  if (req.query.secret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  const contract = req.query.contract || 'GOLD - COMMODITY EXCHANGE INC.';
+  const url = `https://publicreporting.cftc.gov/resource/6dca-aqww.json?$where=market_and_exchange_names='${encodeURIComponent(contract)}'&$order=report_date_as_yyyy_mm_dd DESC&$limit=2`;
+
+  try {
+    const r = await fetch(url);
+    const text = await r.text();
+
+    if (!r.ok) {
+      return res.status(500).json({
+        ok: false,
+        status: r.status,
+        url,
+        bodyPreview: text.substring(0, 500)
+      });
+    }
+
+    let data;
+    try { data = JSON.parse(text); } catch(e) {
+      return res.status(500).json({
+        ok: false,
+        error: 'Response not JSON',
+        bodyPreview: text.substring(0, 500)
+      });
+    }
+
+    res.json({
+      ok: true,
+      contractQueried: contract,
+      url,
+      rowCount: Array.isArray(data) ? data.length : 0,
+      sampleRow: Array.isArray(data) && data[0] ? data[0] : null,
+      allKeys: Array.isArray(data) && data[0] ? Object.keys(data[0]) : []
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ─── Test endpoints ───────────────────────────────────────
+app.get('/test-cot', async (req, res) => {
+
 // ─── Test endpoints ───────────────────────────────────────
 app.get('/test-cot', async (req, res) => {
   const r = await fetch(`http://localhost:${PORT}/cron/cot-report?secret=${process.env.CRON_SECRET}`);
