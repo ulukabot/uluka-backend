@@ -51,7 +51,44 @@ const ADMIN_CHAT_ID      = process.env.ADMIN_CHAT_ID      || '';
 const PREMIUM_GROUP_ID   = process.env.PREMIUM_GROUP_ID   || '';
 const FREE_GROUP_ID      = process.env.FREE_GROUP_ID      || '';
 const CLAUDE_API_KEY     = process.env.CLAUDE_API_KEY     || '';
+const GROQ_API_KEY       = process.env.GROQ_API_KEY       || '';
 const ADMIN_SECRET       = process.env.ADMIN_SECRET       || 'default-secret-change-me';
+
+// ═══════════════════════════════════════════════════════════
+// GROQ (FREE) — content generation helper
+// Uses OpenAI-compatible endpoint. Falls back to Claude if key missing.
+// ═══════════════════════════════════════════════════════════
+async function callGroq({ system, user, maxTokens = 500, temperature = 0.7 }) {
+  if (!GROQ_API_KEY) return null;  // caller falls back to Claude
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        max_tokens: maxTokens,
+        temperature: temperature
+      })
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('Groq error:', res.status, err.substring(0, 200));
+      return null;
+    }
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch (e) {
+    console.error('Groq fetch error:', e.message);
+    return null;
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 // SNAPOTTER CARD RENDERER
@@ -4218,25 +4255,42 @@ app.all('/cron/generate-daily-content', async (req, res) => {
         `${platform.includes('Telegram') ? '- HTML formatted, <b>bold</b> for numbers\n' : ''}` +
         `If a losing day: be transparent. NEVER fabricate.\nRespond with ONLY the post text.`;
 
-      try {
-        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'x-api-key': CLAUDE_API_KEY,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 500,
-            system: 'You are a social media copywriter. Write only the post text.',
-            messages: [{ role: 'user', content: prompt }]
-          })
+          try {
+        let post = '';
+
+        // ✅ Try Groq first (free)
+        post = await callGroq({
+          system: 'You are a social media copywriter. Write only the post text.',
+          user: prompt,
+          maxTokens: 500,
+          temperature: 0.7
         });
-        const aiData = await aiRes.json();
-        let post = aiData.content?.[0]?.text || '';
-        post = post.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
-        post = post.replace(/\\n/g, '\n');
+
+        // ⚠️ Fall back to Claude only if Groq failed
+        if (!post && CLAUDE_API_KEY) {
+          console.log('⚠️ Groq failed — falling back to Claude for', platform);
+          const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'x-api-key': CLAUDE_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 500,
+              system: 'You are a social media copywriter. Write only the post text.',
+              messages: [{ role: 'user', content: prompt }]
+            })
+          });
+          const aiData = await aiRes.json();
+          post = aiData.content?.[0]?.text || '';
+        }
+
+        if (post) {
+          post = post.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+          post = post.replace(/\\n/g, '\n');
+        }
 
                 if (post) {
           const insertRes = await pool.query(
