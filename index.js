@@ -4998,11 +4998,11 @@ app.get('/test-lead-raw', async (req, res) => {
       })
     });
 
-    const status = aiRes.status;
+        const status = aiRes.status;
     const aiData = await aiRes.json();
 
     let rawText = '';
-    if (aiData.content) {
+    if (aiData.content && Array.isArray(aiData.content)) {
       for (const block of aiData.content) {
         if (block.type === 'text') rawText += block.text + '\n';
       }
@@ -5012,8 +5012,10 @@ app.get('/test-lead-raw', async (req, res) => {
       ok: true,
       httpStatus: status,
       rawTextLength: rawText.length,
-      rawText: rawText.substring(0, 2000),  // first 2000 chars
-      contentBlocks: Array.isArray(aiData.content) ? aiData.content.length : 0
+      rawText: rawText.substring(0, 2000),
+      contentBlocks: Array.isArray(aiData.content) ? aiData.content.length : 0,
+      // ✅ Show the FULL Claude response so we can see the exact error
+      fullClaudeResponse: JSON.stringify(aiData).substring(0, 2000)
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
