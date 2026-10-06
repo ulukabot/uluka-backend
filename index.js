@@ -4211,12 +4211,19 @@ app.all('/cron/cot-report', async (req, res) => {
       if      (netChg >  5000) trend = 'INCREASING_LONGS';
       else if (netChg < -5000) trend = 'INCREASING_SHORTS';
 
-      // Human-readable summary
-      const dir = netSpec >= 0 ? 'long' : 'short';
-      let summary = `Speculators net ${dir} ${Math.abs(netSpec).toLocaleString()}`;
-      if      (trend === 'INCREASING_LONGS')  summary += ' (adding longs)';
-      else if (trend === 'INCREASING_SHORTS') summary += ' (adding shorts)';
-      else                                     summary += ' (stable)';
+            // Human-readable summary — direction-aware
+      let summary = '';
+      if (netSpec >= 0) {
+        // Net long
+        if      (netChg >  5000) summary = `Speculators net long ${Math.abs(netSpec).toLocaleString()} (adding to longs)`;
+        else if (netChg < -5000) summary = `Speculators net long ${Math.abs(netSpec).toLocaleString()} (reducing longs)`;
+        else                     summary = `Speculators net long ${Math.abs(netSpec).toLocaleString()} (stable)`;
+      } else {
+        // Net short
+        if      (netChg < -5000) summary = `Speculators net short ${Math.abs(netSpec).toLocaleString()} (adding to shorts)`;
+        else if (netChg >  5000) summary = `Speculators net short ${Math.abs(netSpec).toLocaleString()} (reducing shorts)`;
+        else                     summary = `Speculators net short ${Math.abs(netSpec).toLocaleString()} (stable)`;
+      }
 
       report += `${icon} <b>${clean}</b>: ${summary}\n`;
       report += `   Net: ${netSpec >= 0 ? '+' : ''}${netSpec.toLocaleString()} (${netPctOfOI.toFixed(1)}% of OI)\n`;
