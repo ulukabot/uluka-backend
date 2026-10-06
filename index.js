@@ -4937,9 +4937,25 @@ async function getClientByTelegramId(chatId) {
   }
 }
 
+// ─── AI SUPPORT (Groq-first, Claude fallback) ─────────────
 async function getClaudeSupport(userMessage, clientData) {
+  const systemPrompt = buildSupportSystemPrompt(clientData);
+
+  // ✅ Try Groq first (free)
+  const groqReply = await callGroq({
+    system: systemPrompt,
+    user: userMessage,
+    maxTokens: 400,
+    temperature: 0.7
+  });
+  if (groqReply && groqReply.trim().length > 0) {
+    return groqReply.trim();
+  }
+
+  // ⚠️ Fall back to Claude only if Groq failed
+  if (!CLAUDE_API_KEY) return null;
   try {
-    if (!CLAUDE_API_KEY) return null;
+    console.log('⚠️ Groq support failed — falling back to Claude');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -4950,18 +4966,18 @@ async function getClaudeSupport(userMessage, clientData) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 400,
-        system: buildSupportSystemPrompt(clientData),
+        system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }),
     });
     if (!res.ok) {
-      console.error('Claude support API error:', res.status);
+      console.error('Claude support fallback API error:', res.status);
       return null;
     }
     const json = await res.json();
     return json.content && json.content[0] ? json.content[0].text : null;
   } catch (err) {
-    console.error('getClaudeSupport error:', err.message);
+    console.error('Claude support fallback error:', err.message);
     return null;
   }
 }
