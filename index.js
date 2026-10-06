@@ -141,11 +141,30 @@ async function renderCard(htmlContent) {
         'Authorization': `Bearer ${SNAPOTTER_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        html: htmlContent,
+            body: JSON.stringify({
+        html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0C1830;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>${htmlContent}</body>
+</html>`,
         format: 'png',
-        viewportWidth: 800,
-        viewportHeight: 400,
+        viewportWidth: 1080,
+        viewportHeight: 1350,
         deviceScaleFactor: 2
       }),
     });
