@@ -1075,28 +1075,42 @@ async function handleValidation(params) {
 // ─── SHARED HOOT FORMATTER ────────────────────────────────
 function buildHootMessages(d) {
     const lotDisplay = d.lot !== undefined ? d.lot : 'N/A';
-    const riskDisplay = d.riskPercent !== undefined ? `${d.riskPercent}%` : 'N/A';
+    // Try every possible risk field name
+    const riskVal = d.riskPercent ?? d.risk ?? d.risk_percent ?? d.risk_pct ?? null;
+    const riskDisplay = (riskVal !== null && riskVal !== '' && riskVal !== undefined)
+        ? `${riskVal}%` : 'N/A';
+
+    // Direction icons + label
+    const isBuy = d.action === 'BUY';
+    const directionEmoji = isBuy ? '🟢' : '🔴';
+    const directionLabel = isBuy ? 'BUY' : 'SELL';
+    const entryColor = isBuy ? '🟢' : '🔴';
 
     const premiumMsg = `
-🦉 ULUKA PREMIUM HOOT
-Status: ${d.action === 'BUY' ? '🟢 BUY' : '🔴 SELL'}
-Symbol: ${d.symbol}
-Strategy: ${d.strategy}
-Entry: ${d.entry}
-SL: ${d.sl}
-TP1: ${d.tp1} RR 1:${d.rr1}
-TP2: ${d.tp2} RR 1:${d.rr2}
-TP3: ${d.tp3} RR 1:${d.rr3}
-Lot: ${lotDisplay}
-Risk (Account %): ${riskDisplay}
-Ticket: ${d.ticket}
+🦉 <b>ULUKA PREMIUM HOOT</b>
+━━━━━━━━━━━━━━━━
+<b>Status:</b> ${directionEmoji} <b>${directionLabel}</b>
+<b>Symbol:</b> <code>${d.symbol || '—'}</code>
+<b>Strategy:</b> ${d.strategy || '—'}
+━━━━━━━━━━━━━━━━
+<b>Entry:</b> <code>${d.entry || '—'}</code>
+<b>SL:</b> <code>${d.sl || '—'}</code>
+<b>TP1:</b> <code>${d.tp1 || '—'}</code> <i>RR 1:${d.rr1 || '—'}</i>
+<b>TP2:</b> <code>${d.tp2 || '—'}</code> <i>RR 1:${d.rr2 || '—'}</i>
+<b>TP3:</b> <code>${d.tp3 || '—'}</code> <i>RR 1:${d.rr3 || '—'}</i>
+━━━━━━━━━━━━━━━━
+<b>Lot:</b> <code>${lotDisplay}</code>
+<b>Risk:</b> <code>${riskDisplay}</code>
+<b>Ticket:</b> <code>${d.ticket || '—'}</code>
     `;
 
     const freeMsg = `
-🦉 FREE HOOT
-${d.action} on ${d.symbol}
-TP1: ${d.tp1}
-💎 Join Premium for full levels
+🦉 <b>FREE HOOT</b>
+━━━━━━━━━━━━━━━━
+<b>${directionEmoji} ${directionLabel}</b> on <code>${d.symbol || '—'}</code>
+<b>TP1:</b> <code>${d.tp1 || '—'}</code>
+━━━━━━━━━━━━━━━━
+💎 Join Premium for full SL + TP2 + TP3
     `;
 
     return { premiumMsg, freeMsg };
