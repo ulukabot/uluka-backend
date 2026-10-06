@@ -4630,7 +4630,7 @@ app.get('/test-groq', async (req, res) => {
 
   res.json({
     ok: true,
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b',
     elapsedMs: elapsed,
     generatedPost: post.trim()
   });
