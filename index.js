@@ -4139,16 +4139,33 @@ app.all('/cron/cot-report', async (req, res) => {
   let report = '📊 <b>Weekly COT Intelligence Report</b>\n';
   report += new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) + '\n\n';
 
-  for (const pair of pairs) {
+    for (const pair of pairs) {
     const clean = pair.trim();
     const base = clean.substring(0, 3);
+
+    // Map broker symbols → actual CFTC COT contract names
+    const COT_CONTRACTS = {
+      'EUR': 'EURO FX - CHICAGO MERCANTILE EXCHANGE',
+      'GBP': 'BRITISH POUND - CHICAGO MERCANTILE EXCHANGE',
+      'JPY': 'JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE',
+      'CHF': 'SWISS FRANC - CHICAGO MERCANTILE EXCHANGE',
+      'CAD': 'CANADIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE',
+      'AUD': 'AUSTRALIAN DOLLAR - CHICAGO MERCANTILE EXCHANGE',
+      'NZD': 'NZ DOLLAR - CHICAGO MERCANTILE EXCHANGE',
+      'XAU': 'GOLD - COMMODITY EXCHANGE INC.',
+      'GOLD': 'GOLD - COMMODITY EXCHANGE INC.',
+      'XAG': 'SILVER - COMMODITY EXCHANGE INC.',
+      'SILVER': 'SILVER - COMMODITY EXCHANGE INC.'
+    };
+    const contractName = COT_CONTRACTS[base] || base;
+
     try {
       // Ask for a simple line-based format — much more reliable than JSON
       // when browser search is involved
       const prompt =
-        `Search the web for the latest CFTC Commitments of Traders (COT) report for ${base}.\n` +
-        `Use recent data (within the last 14 days).\n\n` +
-        `Respond with EXACTLY these 5 lines, no other text, no markdown:\n` +
+        `Search the web for the latest CFTC Commitments of Traders (COT) report for the contract "${contractName}".\n` +
+        `Look for data from the most recent weekly report (within the last 14 days).\n` +
+        `Sources: cftc.gov, barchart.com/forex, investing.com, tradingster.com\n\n` +        `Respond with EXACTLY these 5 lines, no other text, no markdown:\n` +
         `SENTIMENT: BULLISH or BEARISH or NEUTRAL\n` +
         `TREND: INCREASING_LONGS or INCREASING_SHORTS or STABLE\n` +
         `EXTREME: true or false\n` +
@@ -4214,9 +4231,9 @@ app.all('/cron/cot-report', async (req, res) => {
       // ⚠️ Fall back to Claude if Groq failed or output was unparseable
       if (!rawText && CLAUDE_API_KEY) {
         console.log(`⚠️ Groq COT failed for ${clean} — falling back to Claude`);
-        const claudePrompt =
-          `Search for the latest CFTC Commitments of Traders (COT) report for ${base}.\n` +
-          `Look on: barchart.com/forex, investing.com/forex, or dailyfx.com/forex\n\n` +
+                const claudePrompt =
+          `Search for the latest CFTC Commitments of Traders (COT) report for the contract "${contractName}".\n` +
+          `Look on: cftc.gov, barchart.com/forex, investing.com/forex, or tradingster.com\n\n` +
           `Extract:\n- Net non-commercial positioning\n- Increasing or decreasing\n- Commercials opposing (contrarian signal)\n\n` +
           `Respond ONLY with JSON:\n{"cot_sentiment":"BULLISH"|"BEARISH"|"NEUTRAL","net_position":int,"trend":"INCREASING_LONGS"|"INCREASING_SHORTS"|"STABLE","extreme":bool,"contrarian_signal":bool,"summary":"one sentence max 15 words","report_date":"date or unknown"}`;
 
