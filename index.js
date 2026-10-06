@@ -309,53 +309,61 @@ function buildOpenCardHTML(d) {
     </div>
   `;
 }
+
 // ─── HTML TEMPLATE — Free Open Card (teaser) ─────────────
 function buildFreeOpenCardHTML(d) {
   const isBuy = (d.action || '').toUpperCase() === 'BUY';
   const accent = isBuy ? '#00FF88' : '#FF5555';
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">FREE HOOT</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">FREE HOOT</div>
         </div>
-        <div style="font-size:32px;color:#F0B429;">🦉</div>
+        <div style="font-size:56px;color:#F0B429;line-height:1;">🦉</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
-        <div style="flex:1;">
-          <div style="font-size:26px;font-weight:bold;color:${accent};">
-            ${d.action || ''} ${d.symbol || ''}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
-            Session: <span style="color:#FFFFFF;">${d.session || '—'}</span>
-          </div>
-          <div style="font-size:14px;color:#F0B429;margin-top:20px;font-weight:bold;">
-            💎 Join Premium for full SL + TP2 + TP3
-          </div>
+
+      <div style="margin-top:22px;">
+        <div style="font-size:54px;font-weight:bold;color:${accent};letter-spacing:2px;line-height:1.1;">
+          ${d.action || ''} ${d.symbol || ''}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
-          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">TEASER LEVELS</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Entry</span>
-            <span style="color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">SL</span>
-            <span style="color:#8899BB;">🔒 Premium</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#00FF88;">TP1</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="color:#8899BB;font-size:11px;">RR 1:${d.rr1 || '—'}</span></span>
-          </div>
+        <div style="font-size:17px;color:#8899BB;margin-top:12px;">
+          Session: <span style="color:#FFFFFF;">${d.session || '—'}</span>
         </div>
       </div>
-      <div style="text-align:center;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:10px;">
-        👉 @WiseOwlUluka · t.me/ulukaowlbot
+
+      <div style="margin-top:20px;background:#060D1A;border-radius:14px;padding:16px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:6px;">PRICE LEVELS</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Entry</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Stop Loss</span>
+          <span style="font-size:22px;color:#8899BB;font-weight:bold;">🔒 Premium</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#00FF88;font-weight:bold;">TP1</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.tp1 || '—'} <span style="font-size:14px;color:#8899BB;font-weight:normal;margin-left:6px;">RR 1:${d.rr1 || '—'}</span></span>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;padding:18px 24px;background:#060D1A;border:2px solid #F0B429;border-radius:14px;text-align:center;">
+        <div style="font-size:20px;color:#F0B429;font-weight:bold;line-height:1.4;">
+          💎 Join Premium for full SL + TP2 + TP3
+        </div>
+        <div style="font-size:14px;color:#8899BB;margin-top:8px;">t.me/WiseOwlUluka</div>
+      </div>
+
+      <div style="text-align:center;font-size:13px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
+        🦉 @WiseOwlUluka · t.me/ulukaowlbot
       </div>
     </div>
   `;
@@ -374,47 +382,55 @@ function buildCloseCardHTML(d) {
 
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">TRADE CLOSED</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">TRADE CLOSED</div>
         </div>
-        <div style="font-size:32px;color:${accent};">${emoji}</div>
+        <div style="font-size:56px;line-height:1;">${emoji}</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
-        <div style="flex:1;">
-          <div style="font-size:26px;font-weight:bold;color:${accent};">
-            ${d.result || '—'} ${d.symbol || ''}
-          </div>
-          <div style="font-size:14px;color:#8899BB;margin-top:8px;">
-            Direction: <span style="color:#FFFFFF;">${d.direction || d.action || '—'}</span>
-          </div>
-          <div style="font-size:14px;color:#8899BB;margin-top:6px;">
-            Reason: <span style="color:#FFFFFF;">${d.reason || '—'}</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Ticket: <span style="color:#FFFFFF;">${d.ticket || '—'}</span>
-          </div>
+
+      <div style="margin-top:22px;">
+        <div style="font-size:54px;font-weight:bold;color:${accent};letter-spacing:2px;line-height:1.1;">
+          ${d.result || (isWin ? 'WIN' : isLoss ? 'LOSS' : 'BREAKEVEN')}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;text-align:center;">
-          <div style="font-size:11px;color:#8899BB;margin-bottom:14px;letter-spacing:2px;">P&amp;L</div>
-          <div style="font-size:36px;font-weight:bold;color:${accent};margin-bottom:14px;">
-            ${profitStr}
-          </div>
-          <div style="font-size:12px;color:#8899BB;">
-            Daily: <span style="color:#FFFFFF;font-weight:bold;">${dailyStr}</span>
-          </div>
-          ${d.health ? `<div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Health: <span style="color:#FFFFFF;">${d.health}/100</span>
-          </div>` : ''}
+        <div style="font-size:24px;color:#FFFFFF;font-weight:bold;margin-top:10px;">
+          ${d.symbol || ''} · ${d.direction || d.action || '—'}
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:10px;margin-top:14px;">
-        <span>Uluka Ultra</span>
+
+      <div style="margin-top:22px;background:#060D1A;border-radius:14px;padding:24px 26px;
+                  border:1px solid #1A304A;text-align:center;">
+        <div style="font-size:14px;color:#8899BB;letter-spacing:4px;">NET P&amp;L</div>
+        <div style="font-size:64px;font-weight:bold;color:${accent};margin-top:8px;line-height:1.1;">
+          ${profitStr}
+        </div>
+      </div>
+
+      <div style="margin-top:18px;background:#060D1A;border-radius:14px;padding:16px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:6px;">TRADE DETAILS</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Reason</span>
+          <span style="font-size:20px;color:#FFFFFF;font-weight:bold;">${d.reason || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Daily P&amp;L</span>
+          <span style="font-size:20px;color:${dailyPnl >= 0 ? '#00FF88' : '#FF5555'};font-weight:bold;">${dailyStr}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Health</span>
+          <span style="font-size:20px;color:#F0B429;font-weight:bold;">${d.health ? d.health + '/100' : '—'}</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
+        <span>Ticket: ${d.ticket || '—'}</span>
         <span>${d.time || new Date().toISOString().slice(0,16).replace('T',' ')}</span>
       </div>
     </div>
@@ -425,47 +441,59 @@ function buildCloseCardHTML(d) {
 function buildSLUpdateCardHTML(d) {
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">POSITION UPDATE</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">POSITION UPDATE</div>
         </div>
-        <div style="font-size:32px;color:#F0B429;">⚖️</div>
+        <div style="font-size:56px;color:#F0B429;line-height:1;">⚖️</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
-        <div style="flex:1;">
-          <div style="font-size:26px;font-weight:bold;color:#F0B429;">
-            ${d.symbol || ''} ${d.direction || ''}
-          </div>
-          <div style="font-size:14px;color:#8899BB;margin-top:12px;">
-            ${d.be_text || 'Stop Loss Updated'}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
-            Ticket: <span style="color:#FFFFFF;">${d.ticket || '—'}</span>
-          </div>
+
+      <div style="margin-top:22px;">
+        <div style="font-size:54px;font-weight:bold;color:#F0B429;letter-spacing:2px;line-height:1.1;">
+          ${d.symbol || ''}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
-          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">SL MOVED</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Entry</span>
-            <span style="color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">New SL</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.new_sl || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#8899BB;">Open P&amp;L</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.open_pnl || '—'}</span>
-          </div>
+        <div style="font-size:24px;color:#FFFFFF;font-weight:bold;margin-top:10px;">
+          ${d.direction || ''}
         </div>
       </div>
-      <div style="text-align:center;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:10px;">
-        🛡️ Trade is now protected · ${d.time || ''}
+
+      <div style="margin-top:22px;background:#060D1A;border-radius:14px;padding:24px 26px;
+                  border:2px solid #00FF88;text-align:center;">
+        <div style="font-size:14px;color:#8899BB;letter-spacing:4px;">STATUS</div>
+        <div style="font-size:28px;font-weight:bold;color:#00FF88;margin-top:8px;line-height:1.3;">
+          🛡️ SL MOVED
+        </div>
+        <div style="font-size:18px;color:#FFFFFF;margin-top:12px;line-height:1.4;">
+          ${d.be_text || 'Stop Loss Updated'}
+        </div>
+      </div>
+
+      <div style="margin-top:18px;background:#060D1A;border-radius:14px;padding:16px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:6px;">LEVELS</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Entry</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.entry || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#00FF88;font-weight:bold;">New SL</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.new_sl || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Open P&amp;L</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.open_pnl || '—'}</span>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
+        <span>Ticket: ${d.ticket || '—'}</span>
+        <span>${d.time || new Date().toISOString().slice(0,16).replace('T',' ')}</span>
       </div>
     </div>
   `;
@@ -475,50 +503,53 @@ function buildSLUpdateCardHTML(d) {
 function buildActivationCardHTML(d) {
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">NEW ACTIVATION</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">NEW ACTIVATION</div>
         </div>
-        <div style="font-size:32px;color:#00FF88;">🟢</div>
+        <div style="font-size:56px;color:#00FF88;line-height:1;">🟢</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:20px;gap:20px;">
-        <div style="flex:1;">
-          <div style="font-size:24px;font-weight:bold;color:#F0B429;">
-            ${d.client_name || d.client || 'New Client'}
-          </div>
-          <div style="font-size:14px;color:#8899BB;margin-top:10px;">
-            Account: <span style="color:#FFFFFF;">${d.account_id || '—'}</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Broker: <span style="color:#FFFFFF;">${d.broker || '—'}</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Symbol: <span style="color:#FFFFFF;">${d.symbol || '—'}</span>
-          </div>
+
+      <div style="margin-top:22px;">
+        <div style="font-size:44px;font-weight:bold;color:#F0B429;letter-spacing:2px;line-height:1.15;">
+          ${d.client_name || d.client || 'New Client'}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:16px;border:1px solid #1A304A;">
-          <div style="font-size:11px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">ACCOUNT</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Balance</span>
-            <span style="color:#FFFFFF;font-weight:bold;">$${d.balance || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Equity</span>
-            <span style="color:#FFFFFF;font-weight:bold;">$${d.equity || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#8899BB;">Plan</span>
-            <span style="color:#F0B429;font-weight:bold;">${d.plan || 'PAYE'}</span>
-          </div>
+        <div style="font-size:20px;color:#8899BB;margin-top:14px;">
+          Account: <span style="color:#FFFFFF;font-weight:bold;">${d.account_id || '—'}</span>
+        </div>
+        <div style="font-size:17px;color:#8899BB;margin-top:8px;">
+          Broker: <span style="color:#FFFFFF;">${d.broker || '—'}</span>
+        </div>
+        <div style="font-size:17px;color:#8899BB;margin-top:8px;">
+          Symbol: <span style="color:#FFFFFF;">${d.symbol || '—'}</span>
         </div>
       </div>
-      <div style="text-align:center;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:10px;">
-        ✅ EA is now live · ${d.time || ''}
+
+      <div style="margin-top:22px;background:#060D1A;border-radius:14px;padding:20px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">ACCOUNT</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Balance</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">$${d.balance || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Equity</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">$${d.equity || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Plan</span>
+          <span style="font-size:22px;color:#F0B429;font-weight:bold;">${d.plan || 'PAYE'}</span>
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:13px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
+        ✅ EA is now live · ${d.time || new Date().toISOString().slice(0,16).replace('T',' ')}
       </div>
     </div>
   `;
@@ -536,59 +567,69 @@ function buildAdminEODCardHTML(d) {
 
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">DAILY EOD REPORT</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">DAILY EOD REPORT</div>
         </div>
-        <div style="font-size:32px;color:#F0B429;">📊</div>
+        <div style="font-size:56px;color:#F0B429;line-height:1;">📊</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
-        <div style="flex:1;">
-          <div style="font-size:32px;font-weight:bold;color:${accent};">
-            ${pnlStr}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            ${d.date || new Date().toDateString()}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:14px;">
-            Trades: <span style="color:#FFFFFF;font-weight:bold;">${d.trades || 0}</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Win Rate: <span style="color:#00FF88;font-weight:bold;">${winRate}%</span>
-          </div>
+
+      <div style="margin-top:22px;text-align:center;">
+        <div style="font-size:15px;color:#8899BB;letter-spacing:4px;">TOTAL P&amp;L</div>
+        <div style="font-size:64px;font-weight:bold;color:${accent};margin-top:8px;line-height:1.1;">
+          ${pnlStr}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
-          <div style="font-size:10px;color:#8899BB;margin-bottom:8px;letter-spacing:2px;">PERFORMANCE</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">Wins</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.wins || 0}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">Losses</span>
-            <span style="color:#FF5555;font-weight:bold;">${d.losses || 0}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">Realized</span>
-            <span style="color:#FFFFFF;font-weight:bold;">$${d.realized || 0}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">Floating</span>
-            <span style="color:#FFFFFF;font-weight:bold;">$${d.floating || 0}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#8899BB;">Health</span>
-            <span style="color:#F0B429;font-weight:bold;">${d.health || 0}/100</span>
-          </div>
+        <div style="font-size:16px;color:#8899BB;margin-top:8px;">
+          ${d.date || new Date().toDateString()}
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:8px;">
-        <span>Balance: $${d.balance || '—'}</span>
-        <span>Equity: $${d.equity || '—'}</span>
+
+      <div style="margin-top:24px;background:#060D1A;border-radius:14px;padding:20px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">PERFORMANCE</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Trades</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.trades || 0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Wins</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.wins || 0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Losses</span>
+          <span style="font-size:22px;color:#FF5555;font-weight:bold;">${d.losses || 0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Win Rate</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${winRate}%</span>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;background:#060D1A;border-radius:14px;padding:20px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">ACCOUNT</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Balance</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">$${d.balance || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Equity</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">$${d.equity || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Health</span>
+          <span style="font-size:22px;color:#F0B429;font-weight:bold;">${d.health || 0}/100</span>
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:13px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
+        🦉 Uluka Ultra · Daily Report
       </div>
     </div>
   `;
@@ -603,50 +644,58 @@ function buildClientEODCardHTML(d) {
 
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">YOUR DAILY REPORT</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">YOUR DAILY REPORT</div>
         </div>
-        <div style="font-size:32px;color:#F0B429;">🦉</div>
+        <div style="font-size:56px;color:#F0B429;line-height:1;">🦉</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
-        <div style="flex:1;">
-          <div style="font-size:20px;font-weight:bold;color:#FFFFFF;">
-            ${d.client || d.client_name || 'Trader'}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
-            ${d.date || new Date().toDateString()}
-          </div>
-          <div style="font-size:36px;font-weight:bold;color:${accent};margin-top:22px;">
-            ${pnlStr}
-          </div>
+
+      <div style="margin-top:22px;">
+        <div style="font-size:32px;font-weight:bold;color:#FFFFFF;line-height:1.2;">
+          ${d.client || d.client_name || 'Trader'}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
-          <div style="font-size:10px;color:#8899BB;margin-bottom:10px;letter-spacing:2px;">TODAY'S SNAPSHOT</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Trades</span>
-            <span style="color:#FFFFFF;font-weight:bold;">${d.trades || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Wins</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.wins || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span style="color:#8899BB;">Balance</span>
-            <span style="color:#FFFFFF;font-weight:bold;">$${d.balance || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#8899BB;">Health</span>
-            <span style="color:#F0B429;font-weight:bold;">${d.health || '—'}/100</span>
-          </div>
+        <div style="font-size:16px;color:#8899BB;margin-top:10px;">
+          ${d.date || new Date().toDateString()}
         </div>
       </div>
-      <div style="text-align:center;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:8px;">
+
+      <div style="margin-top:24px;background:#060D1A;border-radius:14px;padding:32px 26px;
+                  border:1px solid #1A304A;text-align:center;">
+        <div style="font-size:15px;color:#8899BB;letter-spacing:4px;">TODAY'S P&amp;L</div>
+        <div style="font-size:72px;font-weight:bold;color:${accent};margin-top:10px;line-height:1.1;">
+          ${pnlStr}
+        </div>
+      </div>
+
+      <div style="margin-top:22px;background:#060D1A;border-radius:14px;padding:20px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">SNAPSHOT</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Trades</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.trades || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Wins</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.wins || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Balance</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">$${d.balance || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Health</span>
+          <span style="font-size:22px;color:#F0B429;font-weight:bold;">${d.health || '—'}/100</span>
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:14px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
         Keep letting the owl work. 🦉
       </div>
     </div>
@@ -657,46 +706,57 @@ function buildClientEODCardHTML(d) {
 function buildPAYEArchiveCardHTML(d) {
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">WEEKLY PAYE ARCHIVE</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">WEEKLY PAYE ARCHIVE</div>
         </div>
-        <div style="font-size:32px;color:#F0B429;">💰</div>
+        <div style="font-size:56px;color:#F0B429;line-height:1;">💰</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
-        <div style="flex:1;">
-          <div style="font-size:36px;font-weight:bold;color:#F0B429;">
-            $${d.paye_amount || '0.00'}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
-            Week P&L: <span style="color:#00FF88;font-weight:bold;">${d.week_profit || '—'}</span>
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:6px;">
-            Period: <span style="color:#FFFFFF;">${d.week_dates || '—'}</span>
-          </div>
-        </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
-          <div style="font-size:10px;color:#8899BB;margin-bottom:8px;letter-spacing:2px;">DISTRIBUTION</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">Clients</span>
-            <span style="color:#FFFFFF;font-weight:bold;">${d.total_trades || 0}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">Client share (75%)</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.client_amount || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#8899BB;">Next period</span>
-            <span style="color:#FFFFFF;">${d.next_period || '—'}</span>
-          </div>
+
+      <div style="margin-top:24px;text-align:center;">
+        <div style="font-size:15px;color:#8899BB;letter-spacing:4px;">TOTAL PAYE COLLECTED</div>
+        <div style="font-size:72px;font-weight:bold;color:#F0B429;margin-top:10px;line-height:1.1;">
+          $${d.paye_amount || '0.00'}
         </div>
       </div>
-      <div style="text-align:center;font-size:11px;color:#8899BB;
-                  border-top:1px solid #1A304A;padding-top:8px;">
+
+      <div style="margin-top:22px;background:#060D1A;border-radius:14px;padding:20px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">PERIOD</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Week P&amp;L</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.week_profit || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Dates</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.week_dates || '—'}</span>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;background:#060D1A;border-radius:14px;padding:20px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">DISTRIBUTION</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Clients</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.total_trades || 0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Client Share (75%)</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.client_amount || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Next Period</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.next_period || '—'}</span>
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:13px;color:#8899BB;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
         📅 ${d.week_label || ''} · ${new Date().toDateString()}
       </div>
     </div>
@@ -707,47 +767,54 @@ function buildPAYEArchiveCardHTML(d) {
 function buildPAYEBillingCardHTML(d) {
   return `
     <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
-                font-family:'Courier New',monospace;padding:30px;
-                box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
-                display:flex;flex-direction:column;justify-content:space-between;">
+                font-family:'Courier New',monospace;padding:40px 40px;
+                box-sizing:border-box;border:3px solid #1A304A;border-radius:20px;
+                display:flex;flex-direction:column;overflow:hidden;">
+
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12px;letter-spacing:3px;color:#F0B429;">ULUKA ULTRA</div>
-          <div style="font-size:10px;letter-spacing:4px;color:#8899BB;">PAYE BILLING</div>
+          <div style="font-size:22px;letter-spacing:6px;color:#F0B429;font-weight:bold;">ULUKA ULTRA</div>
+          <div style="font-size:14px;letter-spacing:8px;color:#8899BB;margin-top:6px;">PAYE BILLING</div>
         </div>
-        <div style="font-size:32px;color:#F0B429;">💎</div>
+        <div style="font-size:56px;color:#F0B429;line-height:1;">💎</div>
       </div>
-      <div style="display:flex;justify-content:space-between;flex:1;margin-top:16px;gap:16px;">
-        <div style="flex:1;">
-          <div style="font-size:18px;font-weight:bold;color:#FFFFFF;">
-            ${d.client_name || 'Client'}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:8px;">
-            Week: <span style="color:#FFFFFF;">${d.week_dates || '—'}</span>
-          </div>
-          <div style="font-size:32px;font-weight:bold;color:#F0B429;margin-top:18px;">
-            $${d.paye_amount || '0.00'}
-          </div>
-          <div style="font-size:12px;color:#8899BB;margin-top:4px;">Amount due</div>
+
+      <div style="margin-top:22px;">
+        <div style="font-size:32px;font-weight:bold;color:#FFFFFF;line-height:1.2;">
+          ${d.client_name || 'Client'}
         </div>
-        <div style="flex:1;background:#060D1A;border-radius:8px;padding:14px;border:1px solid #1A304A;">
-          <div style="font-size:10px;color:#8899BB;margin-bottom:8px;letter-spacing:2px;">BREAKDOWN</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">Net Profit</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.week_profit || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#8899BB;">You keep (75%)</span>
-            <span style="color:#00FF88;font-weight:bold;">${d.client_amount || '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;">
-            <span style="color:#8899BB;">Payment</span>
-            <span style="color:#FFFFFF;">${d.pay_method || 'Crypto'}</span>
-          </div>
+        <div style="font-size:16px;color:#8899BB;margin-top:10px;">
+          Week: <span style="color:#FFFFFF;">${d.week_dates || '—'}</span>
         </div>
       </div>
-      <div style="text-align:center;font-size:11px;color:#F0B429;
-                  border-top:1px solid #1A304A;padding-top:8px;">
+
+      <div style="margin-top:24px;background:#060D1A;border-radius:14px;padding:32px 26px;
+                  border:2px solid #F0B429;text-align:center;">
+        <div style="font-size:15px;color:#8899BB;letter-spacing:4px;">AMOUNT DUE</div>
+        <div style="font-size:72px;font-weight:bold;color:#F0B429;margin-top:10px;line-height:1.1;">
+          $${d.paye_amount || '0.00'}
+        </div>
+      </div>
+
+      <div style="margin-top:22px;background:#060D1A;border-radius:14px;padding:20px 26px;
+                  border:1px solid #1A304A;">
+        <div style="font-size:13px;color:#8899BB;letter-spacing:4px;margin-bottom:8px;">BREAKDOWN</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">Net Profit</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.week_profit || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A304A;">
+          <span style="font-size:19px;color:#8899BB;">You Keep (75%)</span>
+          <span style="font-size:22px;color:#00FF88;font-weight:bold;">${d.client_amount || '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+          <span style="font-size:19px;color:#8899BB;">Payment</span>
+          <span style="font-size:22px;color:#FFFFFF;font-weight:bold;">${d.pay_method || 'Crypto'}</span>
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:14px;color:#F0B429;
+                  border-top:1px solid #1A304A;padding-top:12px;margin-top:auto;">
         📲 Send payment to @WiseOwlUluka · Due Monday
       </div>
     </div>
@@ -757,22 +824,23 @@ function buildPAYEBillingCardHTML(d) {
 // ─── HTML TEMPLATE — Welcome Premium ──────────────────────
 function buildWelcomePremiumCardHTML(username) {
   return `
-    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
-                color:#FFFFFF;font-family:'Courier New',monospace;padding:40px;
-                box-sizing:border-box;border:3px solid #F0B429;border-radius:12px;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;
+                background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
+                color:#FFFFFF;font-family:'Courier New',monospace;padding:60px;
+                box-sizing:border-box;border:3px solid #F0B429;border-radius:20px;
                 display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
-      <div style="font-size:52px;margin-bottom:16px;">🦉</div>
-      <div style="font-size:28px;font-weight:bold;color:#F0B429;letter-spacing:2px;">
-        WELCOME TO PREMIUM
+      <div style="font-size:100px;line-height:1;margin-bottom:30px;">🦉</div>
+      <div style="font-size:40px;font-weight:bold;color:#F0B429;letter-spacing:2px;line-height:1.2;">
+        WELCOME TO<br>PREMIUM
       </div>
-      <div style="font-size:18px;color:#FFFFFF;margin-top:14px;">
+      <div style="font-size:28px;color:#FFFFFF;margin-top:30px;font-weight:bold;">
         ${username || 'Trader'}
       </div>
-      <div style="font-size:13px;color:#8899BB;margin-top:20px;line-height:1.6;max-width:560px;">
+      <div style="font-size:18px;color:#8899BB;margin-top:30px;line-height:1.7;max-width:700px;">
         You now receive full hoots — including SL, TP1, TP2, TP3<br>
         All trade cards · Live results · Priority support
       </div>
-      <div style="font-size:12px;color:#F0B429;margin-top:24px;font-weight:bold;">
+      <div style="font-size:18px;color:#F0B429;margin-top:40px;font-weight:bold;">
         Let the owl work. 🦉
       </div>
     </div>
@@ -782,28 +850,28 @@ function buildWelcomePremiumCardHTML(username) {
 // ─── HTML TEMPLATE — Welcome Free ─────────────────────────
 function buildWelcomeFreeCardHTML(username) {
   return `
-    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
-                color:#FFFFFF;font-family:'Courier New',monospace;padding:40px;
-                box-sizing:border-box;border:3px solid #00D4FF;border-radius:12px;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;
+                background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
+                color:#FFFFFF;font-family:'Courier New',monospace;padding:60px;
+                box-sizing:border-box;border:3px solid #00D4FF;border-radius:20px;
                 display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
-      <div style="font-size:52px;margin-bottom:16px;">🦉</div>
-      <div style="font-size:28px;font-weight:bold;color:#00D4FF;letter-spacing:2px;">
-        WELCOME TO FREE HOOTS
+      <div style="font-size:100px;line-height:1;margin-bottom:30px;">🦉</div>
+      <div style="font-size:40px;font-weight:bold;color:#00D4FF;letter-spacing:2px;line-height:1.2;">
+        WELCOME TO<br>FREE HOOTS
       </div>
-      <div style="font-size:18px;color:#FFFFFF;margin-top:14px;">
+      <div style="font-size:28px;color:#FFFFFF;margin-top:30px;font-weight:bold;">
         ${username || 'Trader'}
       </div>
-      <div style="font-size:13px;color:#8899BB;margin-top:20px;line-height:1.6;max-width:560px;">
+      <div style="font-size:18px;color:#8899BB;margin-top:30px;line-height:1.7;max-width:700px;">
         You'll receive teaser hoots when conditions align<br>
         Upgrade to Premium for full SL + TP levels
       </div>
-      <div style="font-size:12px;color:#00D4FF;margin-top:24px;font-weight:bold;">
+      <div style="font-size:18px;color:#00D4FF;margin-top:40px;font-weight:bold;">
         💎 Upgrade: @WiseOwlUluka
       </div>
     </div>
   `;
 }
-
 // ═══════════════════════════════════════════════════════════
 // SEND PHOTO TO TELEGRAM (multipart/form-data, no npm package)
 // ═══════════════════════════════════════════════════════════
