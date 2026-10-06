@@ -4375,6 +4375,19 @@ app.all('/cron/weekly-lead-report', async (req, res) => {
 });
 
 // ─── Admin UI: Post Queue ─────────────────────────────────
+// ─── Platform helper for admin queue ────────────────────
+function getPlatformComposer(platformLower) {
+  if (platformLower.includes('twitter') || platformLower.includes('x'))
+    return { icon: '🐦', label: 'X (Twitter)', composer: 'https://x.com/compose/post' };
+  if (platformLower.includes('linkedin'))
+    return { icon: '💼', label: 'LinkedIn', composer: 'https://www.linkedin.com/feed/?shareActive=true' };
+  if (platformLower.includes('instagram'))
+    return { icon: '📸', label: 'Instagram', composer: 'https://www.instagram.com/' };
+  if (platformLower.includes('telegram'))
+    return { icon: '✈️', label: 'Telegram', composer: '' };
+  return { icon: '📝', label: platformLower, composer: '' };
+}
+
 app.get('/admin/queue', async (req, res) => {
   const secret = req.query.secret;
   if (secret !== ADMIN_SECRET) return res.status(401).send('Unauthorized');
@@ -4383,22 +4396,62 @@ app.get('/admin/queue', async (req, res) => {
     `SELECT id, date, platform, content, status FROM post_queue WHERE status IN ('PENDING_REVIEW','APPROVED','PUBLISH_FAILED') ORDER BY id DESC LIMIT 50`
   );
 
-  const rows = result.rows.map(r => `
-    <div style="border:1px solid #1A304A;border-radius:8px;padding:16px;margin-bottom:12px;background:#0C1830;">
-      <div style="font-size:11px;color:#8899BB;">#${r.id} · ${r.date || ''} · <b style="color:#F0B429;">${r.platform}</b> · <span style="color:${r.status === 'APPROVED' ? '#00FF88' : '#FFB429'};">${r.status}</span></div>
-      <div style="margin:12px 0;white-space:pre-wrap;font-size:13px;color:#FFFFFF;">${r.content.replace(/</g, '&lt;')}</div>
-      ${r.status === 'PENDING_REVIEW'
-        ? `<a href="/admin/approve/${r.id}?secret=${secret}" style="display:inline-block;padding:8px 16px;background:#00FF88;color:#060D1A;border-radius:4px;text-decoration:none;font-weight:bold;font-size:12px;">✅ Approve</a>
-           <a href="/admin/reject/${r.id}?secret=${secret}" style="display:inline-block;padding:8px 16px;background:#FF5555;color:#FFFFFF;border-radius:4px;text-decoration:none;font-weight:bold;font-size:12px;margin-left:8px;">❌ Reject</a>`
-        : ''}
-    </div>
-  `).join('');
+  const rows = result.rows.map(r => {
+    const p = getPlatformComposer((r.platform || '').toLowerCase());
+    const escaped = (r.content || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const statusColor = r.status === 'APPROVED' ? '#00FF88'
+                      : r.status === 'PUBLISH_FAILED' ? '#FF5555' : '#F0B429';
+    return `
+      <div class="post" style="border:1px solid #1A304A;border-radius:8px;padding:16px;margin-bottom:12px;background:#0C1830;">
+        <div style="font-size:11px;color:#8899BB;margin-bottom:8px;">
+          #${r.id} · ${r.date || ''} · <b style="color:#F0B429;">${p.icon} ${p.label}</b> ·
+          <span style="color:${statusColor};">${r.status}</span>
+        </div>
+        <pre class="content" style="margin:12px 0;white-space:pre-wrap;font-family:'Courier New',monospace;font-size:13px;color:#FFFFFF;background:#060D1A;padding:12px;border-radius:4px;border:1px solid #1A304A;">${escaped}</pre>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="copyContent(this)" style="padding:8px 16px;background:#00D4FF;color:#060D1A;border:none;border-radius:4px;font-weight:bold;font-size:12px;cursor:pointer;font-family:inherit;">📋 Copy</button>
+          ${p.composer ? `<a href="${p.composer}" target="_blank" style="padding:8px 16px;background:#F0B429;color:#060D1A;border-radius:4px;text-decoration:none;font-weight:bold;font-size:12px;">🔗 Open ${p.label}</a>` : ''}
+          ${r.status === 'PENDING_REVIEW'
+            ? `<a href="/admin/approve/${r.id}?secret=${secret}" style="padding:8px 16px;background:#00FF88;color:#060D1A;border-radius:4px;text-decoration:none;font-weight:bold;font-size:12px;">✅ Approve</a>
+               <a href="/admin/reject/${r.id}?secret=${secret}" style="padding:8px 16px;background:#FF5555;color:#FFFFFF;border-radius:4px;text-decoration:none;font-weight:bold;font-size:12px;">❌ Reject</a>`
+            : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
 
-  res.send(`<!DOCTYPE html><html><head><title>Post Queue</title></head>
+  res.send(`<!DOCTYPE html><html><head><title>Post Queue</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  </head>
   <body style="background:#060D1A;color:#FFFFFF;font-family:'Courier New',monospace;padding:24px;max-width:900px;margin:auto;">
     <h1 style="color:#F0B429;">🦉 Uluka Post Queue</h1>
-    <p style="color:#8899BB;">Approve posts to publish on the next hourly run. Reject to skip.</p>
+    <p style="color:#8899BB;">Copy · Open composer · Approve. Content previews are mobile-friendly.</p>
     ${rows || '<p style="color:#8899BB;">Queue empty.</p>'}
+    <script>
+      function copyContent(btn) {
+        const pre = btn.closest('.post').querySelector('.content');
+        const text = pre.textContent;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            setTimeout(() => btn.textContent = orig, 2000);
+          }).catch(() => fallbackCopy(text, btn));
+        } else {
+          fallbackCopy(text, btn);
+        }
+      }
+      function fallbackCopy(text, btn) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); btn.textContent = '✅ Copied!'; }
+        catch(e) { btn.textContent = '⚠️ Failed'; }
+        document.body.removeChild(ta);
+        setTimeout(() => btn.textContent = '📋 Copy', 2000);
+      }
+    </script>
   </body></html>`);
 });
 
