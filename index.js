@@ -84,8 +84,8 @@ async function callGroq({ system, user, maxTokens = 500, temperature = 0.7 }) {
     }
     const data = await res.json();
     return data.choices?.[0]?.message?.content || null;
-  } catch (e) {
-    console.error('Groq fetch error:', e.message);
+    } catch (e) {
+    console.error('Groq fetch error:', e.message, '| cause:', e.cause?.message || 'n/a', '| keyLength:', GROQ_API_KEY.length);
     return null;
   }
 }
