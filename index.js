@@ -4582,6 +4582,55 @@ app.get('/admin/reject/:id', async (req, res) => {
   res.redirect(`/admin/queue?secret=${req.query.secret}`);
 });
 
+// ─── TEST: Verify Groq is connected and generating content ───
+app.get('/test-groq', async (req, res) => {
+  if (req.query.secret !== process.env.CRON_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+  if (!GROQ_API_KEY) {
+    return res.status(500).json({ ok: false, error: 'GROQ_API_KEY not set in Railway' });
+  }
+
+  const sample = {
+    total: 5, wins: 4, losses: 1, winRate: 80,
+    pnlStr: '+$187.40', bestSym: 'XAUUSD', bestAct: 'BUY', bestPnl: 62.80,
+    date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  };
+
+  const prompt =
+    `You are the social media manager for Uluka Ultra — an AI forex EA.\n\n` +
+    `Today's verified live results:\n` +
+    `- Date: ${sample.date}\n- Trades: ${sample.total}\n- Wins: ${sample.wins} | Losses: ${sample.losses}\n` +
+    `- Win Rate: ${sample.winRate}%\n- Net P&L: ${sample.pnlStr}\n` +
+    `- Best: ${sample.bestAct} ${sample.bestSym} +$${sample.bestPnl.toFixed(2)}\n\n` +
+    `Write a Twitter/X post:\n- Results with transparency\n- Human tone\n- CTA: DM for info\n- Max 260 chars\n\n` +
+    `Respond with ONLY the post text.`;
+
+  const t0 = Date.now();
+  const post = await callGroq({
+    system: 'You are a social media copywriter. Write only the post text.',
+    user: prompt,
+    maxTokens: 200,
+    temperature: 0.7
+  });
+  const elapsed = Date.now() - t0;
+
+  if (!post) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Groq call failed — check Railway logs',
+      elapsedMs: elapsed
+    });
+  }
+
+  res.json({
+    ok: true,
+    model: 'llama-3.3-70b-versatile',
+    elapsedMs: elapsed,
+    generatedPost: post.trim()
+  });
+});
+
 // ─── Test endpoints ───────────────────────────────────────
 app.get('/test-cot', async (req, res) => {
   const r = await fetch(`http://localhost:${PORT}/cron/cot-report?secret=${process.env.CRON_SECRET}`);
