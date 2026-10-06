@@ -4626,7 +4626,6 @@ app.get('/test-groq', async (req, res) => {
       hint: 'Check Railway logs for the exact fetch error'
     });
   }
-  }
 
   res.json({
     ok: true,
