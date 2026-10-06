@@ -223,7 +223,7 @@ function buildOpenCardHTML(d) {
   const isBuy = (d.action || '').toUpperCase() === 'BUY';
   const accent = isBuy ? '#00FF88' : '#FF5555';
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -291,7 +291,7 @@ function buildFreeOpenCardHTML(d) {
   const isBuy = (d.action || '').toUpperCase() === 'BUY';
   const accent = isBuy ? '#00FF88' : '#FF5555';
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -350,7 +350,7 @@ function buildCloseCardHTML(d) {
   const dailyStr = (dailyPnl >= 0 ? '+' : '-') + '$' + Math.abs(dailyPnl).toFixed(2);
 
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -401,7 +401,7 @@ function buildCloseCardHTML(d) {
 // ─── HTML TEMPLATE — SL Update Card ───────────────────────
 function buildSLUpdateCardHTML(d) {
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -451,7 +451,7 @@ function buildSLUpdateCardHTML(d) {
 // ─── HTML TEMPLATE — Activation Card ──────────────────────
 function buildActivationCardHTML(d) {
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -512,7 +512,7 @@ function buildAdminEODCardHTML(d) {
     : 0;
 
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -579,7 +579,7 @@ function buildClientEODCardHTML(d) {
   const pnlStr = (pnl >= 0 ? '+' : '-') + '$' + Math.abs(pnl).toFixed(2);
 
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -633,7 +633,7 @@ function buildClientEODCardHTML(d) {
 // ─── HTML TEMPLATE — PAYE Archive Card (admin) ─────────────
 function buildPAYEArchiveCardHTML(d) {
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -683,7 +683,7 @@ function buildPAYEArchiveCardHTML(d) {
 // ─── HTML TEMPLATE — PAYE Billing Card (client) ───────────
 function buildPAYEBillingCardHTML(d) {
   return `
-    <div style="width:800px;height:400px;background:#0C1830;color:#FFFFFF;
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:#0C1830;color:#FFFFFF;
                 font-family:'Courier New',monospace;padding:30px;
                 box-sizing:border-box;border:2px solid #1A304A;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:space-between;">
@@ -734,7 +734,7 @@ function buildPAYEBillingCardHTML(d) {
 // ─── HTML TEMPLATE — Welcome Premium ──────────────────────
 function buildWelcomePremiumCardHTML(username) {
   return `
-    <div style="width:800px;height:400px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
                 color:#FFFFFF;font-family:'Courier New',monospace;padding:40px;
                 box-sizing:border-box;border:3px solid #F0B429;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
@@ -759,7 +759,7 @@ function buildWelcomePremiumCardHTML(username) {
 // ─── HTML TEMPLATE — Welcome Free ─────────────────────────
 function buildWelcomeFreeCardHTML(username) {
   return `
-    <div style="width:800px;height:400px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
+    <div style="width:100%;height:100%;max-width:1080px;max-height:1350px;background:linear-gradient(135deg,#0C1830 0%,#1a2850 100%);
                 color:#FFFFFF;font-family:'Courier New',monospace;padding:40px;
                 box-sizing:border-box;border:3px solid #00D4FF;border-radius:12px;
                 display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;">
