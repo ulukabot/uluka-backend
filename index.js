@@ -68,7 +68,7 @@ async function callGroq({ system, user, maxTokens = 500, temperature = 0.7 }) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
