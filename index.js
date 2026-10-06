@@ -4487,14 +4487,40 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
       if (aiData.content) for (const block of aiData.content) if (block.type === 'text') post = block.text;
     }
 
-    post = (post || '').replace(/```\w*\s*/gi, '').trim();
+        post = (post || '').replace(/```\w*\s*/gi, '').trim();
 
     if (post) {
+      // ✅ 1. Send directly to Telegram (Free + Premium)
+      const telegramMsg =
+        `🌍 <b>WEEKLY MARKET OUTLOOK</b>\n` +
+        `📅 ${new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'short' })}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        post;
+
+      if (FREE_GROUP_ID) {
+        await sendToTelegram(FREE_GROUP_ID, telegramMsg).catch(e =>
+          console.error('Weekly outlook Free send failed:', e.message)
+        );
+      }
+      if (PREMIUM_GROUP_ID) {
+        await sendToTelegram(PREMIUM_GROUP_ID, telegramMsg).catch(e =>
+          console.error('Weekly outlook Premium send failed:', e.message)
+        );
+      }
+
+      // ✅ 2. ALSO queue for LinkedIn (manual posting later)
       await pool.query(
         `INSERT INTO post_queue (date, platform, content, status) VALUES ($1, $2, $3, 'PENDING_REVIEW')`,
         [new Date().toLocaleDateString('en-GB'), 'LinkedIn (Weekly Outlook)', post]
       );
-      await sendAdminAlert(`🌍 <b>Weekly Market Outlook Ready</b>\nCheck /admin/queue`);
+
+      // ✅ 3. Admin alert — tells you what happened
+      await sendAdminAlert(
+        `🌍 <b>Weekly Market Outlook</b>\n` +
+        `✅ Posted to Telegram (Free + Premium)\n` +
+        `📋 Queued for LinkedIn\n\n` +
+        `Review LinkedIn draft at /admin/queue`
+      );
     }
     res.json({ ok: true, generated: !!post, provider: post ? 'ok' : 'none' });
   } catch (err) {
