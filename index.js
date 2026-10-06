@@ -54,6 +54,45 @@ const CLAUDE_API_KEY     = process.env.CLAUDE_API_KEY     || '';
 const GROQ_API_KEY       = process.env.GROQ_API_KEY       || '';
 const ADMIN_SECRET       = process.env.ADMIN_SECRET       || 'default-secret-change-me';
 
+// ─── Sanitize AI output for Telegram HTML mode ───────────
+// Converts markdown bold/italic/code to Telegram-safe HTML tags
+function sanitizeForTelegram(text) {
+  if (!text) return text;
+  let out = String(text);
+
+  // 1. Bold: **text** → <b>text</b>
+  out = out.replace(/\*\*([^*\n]+?)\*\*/g, '<b>$1</b>');
+
+  // 2. Italic: *text* → <i>text</i>  (but NOT if part of **)
+  out = out.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<i>$2</i>');
+
+  // 3. Inline code: `text` → <code>text</code>
+  out = out.replace(/`([^`\n]+?)`/g, '<code>$1</code>');
+
+  // 4. Headings: ### Title → <b>Title</b>
+  out = out.replace(/^#{1,6}\s*(.+)$/gm, '<b>$1</b>');
+
+  // 5. Strip markdown bullets: leading "- " or "* " (keep the text)
+  out = out.replace(/^[\-\*]\s+/gm, '• ');
+
+  // 6. Escape any stray HTML angle brackets that aren't our tags
+  //    (order matters — only escape < > that aren't part of <b>, <i>, <code>, etc.)
+  out = out.replace(/<(?!(b|i|code|pre|a)\b)/gi, '&lt;');
+  out = out.replace(/(?<!<\/(b|i|code|pre|a))>/gi, (m, offset, str) => {
+    // Only escape > if it's not closing one of our allowed tags
+    const before = str.substring(Math.max(0, offset - 20), offset);
+    if (/<\/(b|i|code|pre|a)$/i.test(before) || /<(b|i|code|pre|a)\b[^>]*$/i.test(before)) {
+      return '>';
+    }
+    return '&gt;';
+  });
+
+  // 7. Trim trailing whitespace
+  out = out.trim();
+
+  return out;
+}
+
 // ═══════════════════════════════════════════════════════════
 // GROQ (FREE) — content generation helper
 // Uses OpenAI-compatible endpoint. Falls back to Claude if key missing.
@@ -945,6 +984,7 @@ app.get('/test-welcome-free-card', async (req, res) => {
 // ─── Helpers ───────────────────────────────────────────────
 async function sendToTelegram(chatId, text, keyboard) {
     if (!TELEGRAM_BOT_TOKEN || !chatId) return false;
+    text = sanitizeForTelegram(text);
     try {
         const payload = {
             chat_id: chatId,
@@ -4857,6 +4897,10 @@ async function sendSupportReply(chatId, text) {
     console.error('❌ SUPPORT_BOT_TOKEN missing or chatId empty');
     return false;
   }
+
+  // Sanitize the text before sending
+  text = sanitizeForTelegram(text);
+
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
