@@ -53,6 +53,8 @@ const FREE_GROUP_ID      = process.env.FREE_GROUP_ID      || '';
 const CLAUDE_API_KEY     = process.env.CLAUDE_API_KEY     || '';
 const GROQ_API_KEY       = process.env.GROQ_API_KEY       || '';
 const ADMIN_SECRET       = process.env.ADMIN_SECRET       || 'default-secret-change-me';
+// ─── Premium channel link (update this to your actual invite link) ───
+const PREMIUM_LINK = process.env.PREMIUM_LINK || 'https://t.me/WiseOwlUluka';
 
 // ─── Sanitize AI output for Telegram HTML mode ───────────
 // Converts markdown bold/italic/code to Telegram-safe HTML tags
@@ -1104,13 +1106,13 @@ function buildHootMessages(d) {
 <b>Ticket:</b> <code>${d.ticket || '—'}</code>
     `;
 
-    const freeMsg = `
+        const freeMsg = `
 🦉 <b>FREE HOOT</b>
 ━━━━━━━━━━━━━━━━
-<b>${directionEmoji} ${directionLabel}</b> on <code>${d.symbol || '—'}</code>
+${directionEmoji} <b>${directionLabel}</b> on <code>${d.symbol || '—'}</code>
 <b>TP1:</b> <code>${d.tp1 || '—'}</code>
 ━━━━━━━━━━━━━━━━
-💎 Join Premium for full SL + TP2 + TP3
+💎 <a href="${PREMIUM_LINK}"><b>Join Premium for full SL + TP2 + TP3</b></a>
     `;
 
     return { premiumMsg, freeMsg };
@@ -1200,8 +1202,17 @@ app.post('/close', async (req, res) => {
 }
         
         const msg = `🦉 TRADE CLOSED\n${d.result} — ${d.symbol}\nP&L: ${d.profit}\nReason: ${d.reason}\nTicket: ${d.ticket}`;
-        if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
-        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, `🦉 UPDATE\n${d.result} on ${d.symbol}\n💎 Join Premium for details`);
+                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, msg);
+
+        if (FREE_GROUP_ID) {
+            const freeCloseMsg =
+                `🦉 <b>UPDATE</b>\n` +
+                `━━━━━━━━━━━━━━━━\n` +
+                `<b>${d.result}</b> on <code>${d.symbol}</code>\n` +
+                `━━━━━━━━━━━━━━━━\n` +
+                `💎 <a href="${PREMIUM_LINK}"><b>Join Premium for full details</b></a>`;
+            await sendToTelegram(FREE_GROUP_ID, freeCloseMsg);
+        }
         res.send('CLOSE_OK');
     } catch(e) { res.status(500).send('ERROR'); }
 });
