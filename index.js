@@ -4881,9 +4881,6 @@ app.get('/test-cftc', async (req, res) => {
 
 // ─── Test endpoints ───────────────────────────────────────
 app.get('/test-cot', async (req, res) => {
-
-// ─── Test endpoints ───────────────────────────────────────
-app.get('/test-cot', async (req, res) => {
   const r = await fetch(`http://localhost:${PORT}/cron/cot-report?secret=${process.env.CRON_SECRET}`);
   res.json(await r.json());
 });
