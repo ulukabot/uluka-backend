@@ -3190,7 +3190,7 @@ app.get('/api/admin/ai-evaluation', async (req, res) => {
 
 // ─── MORNING BRIEF GENERATOR ──────────────────────────────
 async function generateMorningBrief(accountId = null, clientName = null) {
-    if (!CLAUDE_API_KEY) return '⚠️ Claude API key not configured.';
+    if (!GROQ_API_KEY && !CLAUDE_API_KEY) return '⚠️ No AI provider configured.';
 
     // ─── FETCH LIVE PRICES ──────────────────────────────
 let prices = {
@@ -3277,28 +3277,40 @@ Make, it professional and useful for a trader, Respond in PLAIN TEXT with markdo
 Do NOT wrap in JSON. Do NOT use HTML.
 `;
     
-    try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'x-api-key': CLAUDE_API_KEY,
-                'anthropic-version': '2023-06-01',
-                'content-type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
-                max_tokens: 600,
-                system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
-                messages: [{ role: 'user', content: prompt }]
-            })
-        });
+        // ✅ Try Groq first (free)
+    let brief = await callGroq({
+        system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
+        user: prompt,
+        maxTokens: 600,
+        temperature: 0.7
+    });
 
-        const data = await response.json();
-        return data.content?.[0]?.text || '⚠️ Unable to generate brief at this time.';
-    } catch (error) {
-        console.error('❌ Morning brief generation error:', error.message);
-        return '⚠️ Error generating morning brief.';
+    // ⚠️ Fall back to Claude if Groq failed
+    if (!brief && CLAUDE_API_KEY) {
+        console.log('⚠️ Groq morning brief failed — falling back to Claude');
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': CLAUDE_API_KEY,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'claude-haiku-4-5-20251001',
+                    max_tokens: 600,
+                    system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+            const data = await response.json();
+            brief = data.content?.[0]?.text || '';
+        } catch (error) {
+            console.error('❌ Morning brief fallback error:', error.message);
+        }
     }
+
+    return brief || '⚠️ Unable to generate brief at this time.';
 }
 
 // ─── ROUTE: SEND MORNING BRIEF TO TELEGRAM ──────────────
