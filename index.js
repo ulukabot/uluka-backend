@@ -67,14 +67,15 @@ async function callGroq({ system, user, maxTokens = 500, temperature = 0.7 }) {
         'Authorization': `Bearer ${GROQ_API_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
+            body: JSON.stringify({
         model: 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
         ],
         max_tokens: maxTokens,
-        temperature: temperature
+        temperature: temperature,
+        reasoning_effort: 'low'
       })
     });
     if (!res.ok) {
