@@ -4615,12 +4615,17 @@ app.get('/test-groq', async (req, res) => {
   });
   const elapsed = Date.now() - t0;
 
-  if (!post) {
+    if (!post) {
     return res.status(500).json({
       ok: false,
-      error: 'Groq call failed — check Railway logs',
-      elapsedMs: elapsed
+      error: 'Groq call failed',
+      keyLength: GROQ_API_KEY.length,
+      keyPrefix: GROQ_API_KEY.substring(0, 8),
+      keyHasWhitespace: /\s/.test(GROQ_API_KEY),
+      elapsedMs: elapsed,
+      hint: 'Check Railway logs for the exact fetch error'
     });
+  }
   }
 
   res.json({
