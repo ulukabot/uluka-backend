@@ -5801,6 +5801,63 @@ app.get('/test-support-bot', async (req, res) => {
   }
 });
 
+// ─── TEMP: Export trade_log as CSV for Excel ─────────────
+// Protected by ADMIN_SECRET. Remove after use.
+app.get('/admin/export-trades.csv', async (req, res) => {
+    if (req.query.secret !== ADMIN_SECRET) {
+        return res.status(401).send('Unauthorized');
+    }
+    try {
+        const result = await pool.query(`
+            SELECT
+                time,
+                account_id,
+                client_name,
+                symbol,
+                action,
+                price      AS entry_price,
+                lot,
+                pnl,
+                result,
+                strategy,
+                balance,
+                equity,
+                ai_decision,
+                shadow_mode
+            FROM trade_log
+            ORDER BY time ASC
+        `);
+
+        const headers = [
+            'time','account_id','client_name','symbol','action',
+            'entry_price','lot','pnl','result','strategy',
+            'balance','equity','ai_decision','shadow_mode'
+        ];
+
+        const escape = (v) => {
+            if (v === null || v === undefined) return '';
+            const s = String(v);
+            if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+                return '"' + s.replace(/"/g, '""') + '"';
+            }
+            return s;
+        };
+
+        let csv = headers.join(',') + '\n';
+        for (const row of result.rows) {
+            csv += headers.map(h => escape(row[h])).join(',') + '\n';
+        }
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition',
+            `attachment; filename="uluka-trades-${new Date().toISOString().slice(0,10)}.csv"`);
+        res.send(csv);
+    } catch (err) {
+        console.error('🔥 export-trades error:', err.message);
+        res.status(500).send('Export failed: ' + err.message);
+    }
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
