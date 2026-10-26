@@ -97,7 +97,7 @@ async function callGroq({ system, user, maxTokens = 500, temperature = 0.7 }) {
         'Content-Type': 'application/json'
       },
             body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
+        model: 'llama3-70b-8192',
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user }
@@ -1470,7 +1470,7 @@ Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
-                model: 'claude-haiku-4-5-20251001',
+                model: 'claude-3-haiku-20240307',
                 max_tokens: 200,
                 system: 'You are a JSON-only responder.',
                 messages: [{ role: 'user', content: prompt }]
@@ -1606,7 +1606,7 @@ Do NOT wrap in JSON. Do NOT use HTML.
         'content-type': 'application/json'
     },
     body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-3-haiku-20240307',
         max_tokens: 600,
         system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
         messages: [{ role: 'user', content: prompt }]
@@ -2818,7 +2818,7 @@ Respond ONLY with JSON: {"decision":"SKIP" or "TAKE","reason":"brief explanation
                         'content-type': 'application/json'
                     },
                     body: JSON.stringify({
-                        model: 'claude-haiku-4-5-20251001',
+                        model: 'claude-3-haiku-20240307',
                         max_tokens: 200,
                         system: 'You are a JSON-only responder.',
                         messages: [{ role: 'user', content: prompt }]
@@ -3396,7 +3396,7 @@ Do NOT wrap in JSON. Do NOT use HTML.
                     'content-type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'claude-haiku-4-5-20251001',
+                    model: 'claude-3-haiku-20240307',
                     max_tokens: 600,
                     system: 'You are a professional trading assistant. Always respond in plain text with markdown formatting. Never use JSON or HTML.',
                     messages: [{ role: 'user', content: prompt }]
@@ -4452,7 +4452,7 @@ app.all('/cron/generate-daily-content', async (req, res) => {
               'content-type': 'application/json'
             },
             body: JSON.stringify({
-              model: 'claude-haiku-4-5-20251001',
+              model: 'claude-3-haiku-20240307',
               max_tokens: 500,
               system: 'You are a social media copywriter. Write only the post text.',
               messages: [{ role: 'user', content: prompt }]
@@ -4629,7 +4629,7 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
           'content-type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-3-haiku-20240307',
           max_tokens: 500,
           tools: [{ type: 'web_search_20250305', name: 'web_search' }],
           messages: [{ role: 'user', content: prompt }]
@@ -4992,7 +4992,7 @@ app.get('/test-lead-raw', async (req, res) => {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-3-haiku-20240307',
         max_tokens: 500,
         system: 'You are a JSON-only responder.',
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
@@ -5375,7 +5375,7 @@ async function getClaudeSupport(userMessage, clientData) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-3-haiku-20240307',
         max_tokens: 400,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
