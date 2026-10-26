@@ -4620,11 +4620,29 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
 
   try {
     const pairs = (process.env.TARGET_PAIRS || 'EURUSD,GBPUSD,XAUUSD').split(',').slice(0, 3).join(', ');
+    
+    // 1. Fetch live Gold price to prevent hallucination
+    let currentGold = '4500.00'; // Fallback if API fails
+    try {
+        const goldResp = await fetch('https://api.gold-api.com/price/XAU', { timeout: 5000 });
+        if (goldResp.ok) {
+            const goldData = await goldResp.json();
+            if (goldData.price) currentGold = goldData.price.toFixed(2);
+        }
+    } catch (e) { console.warn('Gold API failed for outlook'); }
+
+    const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+
+    // 2. Updated Prompt with hard anchors
     const prompt =
       `You are a professional forex market analyst writing a Monday LinkedIn post.\n\n` +
+      `Today's Date is EXACTLY: ${today}\n` +
+      `Current XAUUSD (Gold) Price: $${currentGold}\n` +
       `Key pairs to cover: ${pairs}\n\n` +
       `Instructions:\n` +
-      `- Write a market outlook post for this week (professional, authoritative tone)\n` +
+      `- Write a market outlook post for THIS WEEK (${today})\n` +
+      `- Base your support and resistance levels on the current Gold price of $${currentGold}.\n` +
+      `- Do NOT use data from 2024 or 2025. You are in 2026.\n` +
       `- Include: key pairs, major upcoming events (central bank decisions, economic data, geopolitical risks), overall bias\n` +
       `- Mention Uluka Ultra's AI-powered approach\n` +
       `- End with a CTA to follow\n` +
@@ -4633,7 +4651,7 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
       `- Max 500 words\n\n` +
       `Respond with ONLY the post text.`;
 
-    // ✅ Try Groq first (free) — uses browser_search tool
+    // ✅ Try Groq first (free)
     let post = '';
     try {
       const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -4689,13 +4707,13 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
       if (aiData.content) for (const block of aiData.content) if (block.type === 'text') post = block.text;
     }
 
-        post = (post || '').replace(/```\w*\s*/gi, '').trim();
+    post = (post || '').replace(/```\w*\s*/gi, '').trim();
 
     if (post) {
       // ✅ 1. Send directly to Telegram (Free + Premium)
       const telegramMsg =
         `🌍 <b>WEEKLY MARKET OUTLOOK</b>\n` +
-        `📅 ${new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'short' })}\n` +
+        `📅 ${today}\n` +
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
         post;
 
@@ -4713,10 +4731,10 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
       // ✅ 2. ALSO queue for LinkedIn (manual posting later)
       await pool.query(
         `INSERT INTO post_queue (date, platform, content, status) VALUES ($1, $2, $3, 'PENDING_REVIEW')`,
-        [new Date().toLocaleDateString('en-GB'), 'LinkedIn (Weekly Outlook)', post]
+        [today, 'LinkedIn (Weekly Outlook)', post]
       );
 
-      // ✅ 3. Admin alert — tells you what happened
+      // ✅ 3. Admin alert
       await sendAdminAlert(
         `🌍 <b>Weekly Market Outlook</b>\n` +
         `✅ Posted to Telegram (Free + Premium)\n` +
