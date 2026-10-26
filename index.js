@@ -2624,42 +2624,6 @@ app.post('/admin/clear-hwid', async (req, res) => {
     }
 });
 
-// ─── Scheduled Jobs ──────────────────────────────────────────
-setInterval(async () => {
-    try {
-        const result = await pool.query(
-            `UPDATE licences SET status = 'EXPIRED' WHERE expires_on < NOW() AND status = 'ACTIVE' RETURNING licence_key, client_name`
-        );
-        if (result.rows.length > 0) {
-            const names = result.rows.map(r => r.client_name).join('\n');
-            await sendAdminAlert(`⏰ <b>AUTO-EXPIRY</b>\n${result.rows.length} licences expired:\n${names}`);
-        }
-    } catch (err) {
-        console.error('Scheduled expiry check error:', err.message);
-    }
-}, 60 * 60 * 1000); // 1 hour
-
-setInterval(async () => {
-    try {
-        const result = await pool.query(
-            `SELECT account_id, client_name, last_sync 
-             FROM billing 
-             WHERE status = 'ACTIVE' AND (last_sync IS NULL OR last_sync < NOW() - INTERVAL '48 hours')`
-        );
-        if (result.rows.length > 0) {
-            let msg = `📡 <b>AUTO-OFFLINE ALERT</b>\n${result.rows.length} accounts offline for 48h:\n\n`;
-            result.rows.forEach(r => {
-                msg += `👤 ${r.client_name} (${r.account_id}) – last sync: ${r.last_sync ? r.last_sync.toLocaleString() : 'Never'}\n`;
-            });
-            await sendAdminAlert(msg);
-        }
-    } catch (err) {
-        console.error('Scheduled offline check error:', err.message);
-    }
-}, 6 * 60 * 60 * 1000); // 6 hours
-
-console.log('✅ Scheduled jobs started: expiry (1h), offline (6h)');
-
 // ─── Rate limiting ────────────────────────────────────────────
 const rateLimitCache = {};
 
@@ -3481,37 +3445,6 @@ app.post('/admin/send-morning-brief', async (req, res) => {
     }
 });
 
-// ─── SCHEDULED JOB: Morning brief at London Open (08:00 GMT) ──
-function scheduleMorningBrief() {
-    const now = new Date();
-    const nextRun = new Date(now);
-    nextRun.setUTCHours(8, 0, 0, 0); // 08:00 GMT
-    if (now.getUTCHours() >= 8) {
-        nextRun.setUTCDate(nextRun.getUTCDate() + 1);
-    }
-    const delay = nextRun.getTime() - now.getTime();
-
-    setTimeout(async () => {
-        console.log('🌅 Running scheduled morning brief...');
-        try {
-            const brief = await generateMorningBrief();
-            if (brief) {
-                if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, brief);
-                if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, brief);
-                console.log('✅ Scheduled morning brief sent');
-            }
-        } catch (e) {
-            console.error('❌ Scheduled morning brief failed:', e.message);
-        }
-        // Re-schedule for next day
-        scheduleMorningBrief();
-    }, delay);
-}
-
-// Start the scheduler
-scheduleMorningBrief();
-console.log('📅 Morning brief scheduler started (daily at 08:00 GMT)');
-
 
 // ─── Debug: Show current news state ──────────────────────────
 app.get('/news-state', (req, res) => {
@@ -3655,7 +3588,6 @@ const emailHeroStat = (label, value, color = '#00FF88') =>
 
 // ─── START NEWS CACHE ──────────────────────────────────────
 updateNewsCache(); // Run once on startup
-setInterval(updateNewsCache, 60 * 60 * 1000); // Refresh every hour
 
 // ═══════════════════════════════════════════════════════════
 // EMAIL SEQUENCES
@@ -5310,6 +5242,25 @@ app.all('/cron/dispatcher', async (req, res) => {
 
     // Every hour at :xx → publish approved posts
     await runEndpoint('/cron/publish-approved-posts', 'publish_posts');
+
+        // Every hour → Expiry Check
+    await runEndpoint('/admin/run-expiry', 'expiry_check');
+
+    // Every hour → EA Offline Check
+    await runEndpoint('/admin/run-offline-check', 'offline_check');
+
+    // Every hour → Update News Cache
+    await updateNewsCache();
+
+    // 08:00 UTC (02:00 GMT) → Morning Brief
+    if (utcHour === 2) {
+      const brief = await generateMorningBrief();
+      if (brief) {
+          if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, brief);
+          if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, brief);
+      }
+      results.morning_brief = 'ok';
+    }
 
     // Monday 07:xx UTC → weekly market outlook
     if (utcDay === 1 && utcHour === 7) {
