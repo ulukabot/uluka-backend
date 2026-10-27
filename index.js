@@ -104,7 +104,6 @@ async function callGroq({ system, user, maxTokens = 500, temperature = 0.7 }) {
         ],
         max_tokens: maxTokens,
         temperature: temperature,
-        reasoning_effort: 'low'
       })
     });
     if (!res.ok) {
