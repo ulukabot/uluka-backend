@@ -60,7 +60,21 @@ async function runTick() {
       }
 
       const klines = await bybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
+      
+      // 👈 SAFETY CHECK 1: If Bybit returns empty data, skip this symbol
+      if (!klines || klines.length < 50) {
+        console.log(`⏭️ Skipping ${symbol}: Empty kline data from Bybit.`);
+        continue;
+      }
+
       const ticker = await bybit.getTicker(symbol);
+      
+      // 👈 SAFETY CHECK 2: If ticker is null, skip this symbol
+      if (!ticker || !ticker.lastPrice) {
+        console.log(`⏭️ Skipping ${symbol}: Ticker data unavailable.`);
+        continue;
+      }
+
       const currentPrice = parseFloat(ticker.lastPrice);
       
       // 1. Manage Existing Positions
