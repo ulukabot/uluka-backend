@@ -87,7 +87,14 @@ async function runTick() {
       }
       lastCandleTimes[symbol] = currentCandleTime;
 
-      const info = await bybit.getInstrumentsInfo(symbol);
+            const info = await bybit.getInstrumentsInfo(symbol);
+      
+      // 👈 Safety check added
+      if (!info || !info.priceFilter) {
+        console.log(`⏭️ Skipping ${symbol}: Instrument info unavailable.`);
+        continue;
+      }
+      
       const tickSize = parseFloat(info.priceFilter.tickSize);
       
       const { closes } = ind.parseKlines(klines);
