@@ -3401,16 +3401,19 @@ Do NOT wrap in JSON. Do NOT use HTML.
                     messages: [{ role: 'user', content: prompt }]
                 })
             });
-            const data = await response.json();
-            brief = data.content?.[0]?.text || '';
+                       const data = await response.json();
+            if (data.error) {
+                console.error('❌ Claude Morning Brief Error:', data.error);
+            } else {
+                brief = data.content?.[0]?.text || '';
+            }
         } catch (error) {
             console.error('❌ Morning brief fallback error:', error.message);
         }
     }
 
-    return brief || '⚠️ Unable to generate brief at this time.';
+    return brief || null;
 }
-
 // ─── ROUTE: SEND MORNING BRIEF TO TELEGRAM ──────────────
 app.post('/admin/send-morning-brief', async (req, res) => {
     const secret = req.query.secret || req.body.secret;
@@ -5162,20 +5165,25 @@ app.all('/cron/dispatcher', async (req, res) => {
         // Every hour → Expiry Check
     await runEndpoint('/admin/run-expiry', 'expiry_check');
 
-    // Every hour → EA Offline Check
-    await runEndpoint('/admin/run-offline-check', 'offline_check');
+        // Once a day at 09:00 UTC → EA Offline Check
+    if (utcHour === 9) {
+      await runEndpoint('/admin/run-offline-check', 'offline_check');
+    }
 
     // Every hour → Update News Cache
     await updateNewsCache();
 
-    // 08:00 UTC (02:00 GMT) → Morning Brief
+        // 08:00 UTC (02:00 GMT) → Morning Brief
     if (utcHour === 2) {
       const brief = await generateMorningBrief();
-      if (brief) {
+      if (brief && !brief.includes('Unable to generate')) {
           if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, brief);
           if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, brief);
+          results.morning_brief = 'ok';
+      } else {
+          console.error('❌ Morning Brief failed to generate. Skipping send.');
+          results.morning_brief = 'failed';
       }
-      results.morning_brief = 'ok';
     }
 
     // Monday 07:xx UTC → weekly market outlook
