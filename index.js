@@ -342,8 +342,9 @@ async function closePaperTrade(index, closePrice, reason, exactPnl = null) {
   paperAccount.openPositions.splice(index, 1);
 
   const isWin = pnl >= 0;
-  if (isWin) consecutiveLosses = 0; 
-  else {
+  if (isWin) {
+    consecutiveLosses = 0; 
+  } else {
     consecutiveLosses++;
     symbolCooldowns[pos.symbol] = Date.now() + (config.symbolCooldownMinutes * 60 * 1000);
   }
@@ -356,6 +357,7 @@ async function closePaperTrade(index, closePrice, reason, exactPnl = null) {
   console.log(`\n[${now()}] 🔴 TRADE CLOSED: ${pos.symbol} ${pos.side} | PnL: $${pnl.toFixed(2)}`);
   await tg.sendMessage(`🔴 <b>TRADE CLOSED</b>\n\n<b>Pair:</b> ${pos.symbol}\n<b>Reason:</b> ${reason}\n<b>PnL:</b> $${pnl.toFixed(2)}`);
   
+  // 👈 WEBHOOK FOR CHANNELS (WIN/LOSS CARD)
   if (process.env.IS_MASTER === 'true') {
     await tg.sendWebhook({
       type: 'TRADE_CLOSE',
