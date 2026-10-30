@@ -5764,19 +5764,6 @@ app.get('/api/crypto/active-users', async (req, res) => {
     }
 });
 
-// ─── CRYPTO SAAS: Fetch Active Users (For the Crypto Bot) ──────────
-app.get('/api/crypto/active-users', async (req, res) => {
-    if (req.headers['x-admin-secret'] !== ADMIN_SECRET) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    try {
-        const result = await pool.query(`SELECT * FROM crypto_users WHERE status = 'ACTIVE'`);
-        res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // ─── CRYPTO SAAS: Save User Settings (For Netlify Portal) ───
 app.post('/api/crypto/settings', async (req, res) => {
     const { account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols } = req.body;
@@ -5802,6 +5789,7 @@ app.post('/api/crypto/settings', async (req, res) => {
     }
 });
 
+// ─── START SERVER ────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
 
