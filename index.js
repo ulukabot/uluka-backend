@@ -163,8 +163,12 @@ async function runTick() {
         continue;
       }
 
+            // 👈 FIX: Read the TOTAL account equity, not just USDT
+      const totalEquity = parseFloat(balData.list[0]?.totalEquity || 0);
+      
+      // Fallback: If totalEquity is missing, look for USDT equity
       const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
-      const equity = parseFloat(usdt?.equity || 0);
+      const equity = totalEquity > 0 ? totalEquity : parseFloat(usdt?.equity || 0);
       
       if (equity <= 0) continue;
 
