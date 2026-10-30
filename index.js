@@ -26,7 +26,6 @@ function getDominantStrategy(signal) {
   return 'Unknown';
 }
 
-const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
 const lastCandleTimes = {}; 
 const openPositions = {}; 
 const consecutiveLosses = {}; 
@@ -55,11 +54,17 @@ async function runTick() {
       const bybit = new BybitClient({ apiKey: user.api_key, apiSecret: user.api_secret, testnet: false, demo: process.env.BYBIT_DEMO === 'true' });
       if (!consecutiveLosses[user.account_id]) consecutiveLosses[user.account_id] = 0;
 
-            const balData = await bybit.getBalance();
+      // 🛡️ SAFE BALANCE FETCH
+      let balData;
+      try {
+        balData = await bybit.getBalance();
+      } catch (e) {
+        console.log(`⏭️ Skipping ${user.account_id}: Bybit API error (Balance)`);
+        continue;
+      }
       
-      // 👈 SAFETY CHECK: If Bybit returns an empty list, skip this user for now
       if (!balData || !balData.list || balData.list.length === 0) {
-        console.log(`⏭️ Skipping ${user.account_id}: Balance data unavailable from Bybit.`);
+        console.log(`⏭️ Skipping ${user.account_id}: Empty balance list from Bybit.`);
         continue;
       }
 
@@ -73,14 +78,12 @@ async function runTick() {
       }
       
       if (user.peak_equity > 0 && equity < (user.peak_equity * 0.90)) { 
-        // 🚨 GUARDIAN ANGEL PRIVATE ALERT (Only sent once if master)
         if (user.is_master) {
-          await tg.sendMessage(`🚨 <b>GUARDIAN ANGEL</b>\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nEquity: $${equity}\nPeak: $${user.peak_equity}\nTrading halted.`);
+          await tg.sendMessage(`🚨 <b>GUARDIAN ANGEL</b>\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nTrading halted.`);
         }
         continue; 
       }
 
-      // Update equity if new peak
       if (equity > user.peak_equity || user.daily_start_equity === 0) {
         await fetch('https://uluka-backend-production.up.railway.app/api/crypto/update-equity', {
           method: 'POST',
@@ -97,20 +100,43 @@ async function runTick() {
         if (symbolCooldowns[symbolKey] && Date.now() < symbolCooldowns[symbolKey]) continue;
         if (lastCandleTimes[symbolKey] === undefined) lastCandleTimes[symbolKey] = 0;
 
-        const klines = await bybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
+        // 🛡️ SAFE KLINES FETCH
+        let klines;
+        try {
+          klines = await bybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
+        } catch (e) {
+          continue;
+        }
+        
         if (!klines || klines.length < 50) continue;
 
-        const ticker = await bybit.getTicker(symbol);
+        // 🛡️ SAFE TICKER FETCH
+        let ticker;
+        try {
+          ticker = await bybit.getTicker(symbol);
+        } catch (e) {
+          continue;
+        }
+        
         if (!ticker || !ticker.lastPrice) continue;
         const currentPrice = parseFloat(ticker.lastPrice);
 
         await manageOpenPositions(user, symbol, currentPrice, bybit);
 
+        // 🛡️ SAFE CANDLE PARSE
+        if (!klines[0] || !klines[0][0]) continue;
         const currentCandleTime = parseInt(klines[0][0]); 
         if (lastCandleTimes[symbolKey] === currentCandleTime) continue; 
         lastCandleTimes[symbolKey] = currentCandleTime;
 
-        const info = await bybit.getInstrumentsInfo(symbol);
+        // 🛡️ SAFE INSTRUMENT INFO FETCH
+        let info;
+        try {
+          info = await bybit.getInstrumentsInfo(symbol);
+        } catch (e) {
+          continue;
+        }
+
         if (!info || !info.priceFilter) continue;
         const tickSize = parseFloat(info.priceFilter.tickSize);
         
@@ -121,21 +147,17 @@ async function runTick() {
           const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
           if (dominantVotes < 2) continue;
 
-          // 🧬 DNA BLOCKING
           const stratName = getDominantStrategy(signal);
           const dnaStats = await db.getDNAStats(symbol, 'strategy', stratName);
           if (dnaStats) {
             const total = dnaStats.wins + dnaStats.losses;
             const winRate = (dnaStats.wins / total) * 100;
-            if (total >= 5 && winRate < 30) {
-              continue;
-            }
+            if (total >= 5 && winRate < 30) continue;
           }
 
           const openPos = openPositions[user.account_id].find(p => p.symbol === symbol);
           
           if (!openPos) {
-            // 🛡️ LOSS GOVERNOR
             if (consecutiveLosses[user.account_id] >= config.maxConsecutiveLosses) continue;
             let currentRisk = user.risk_percent;
             if (config.lossGovernor[consecutiveLosses[user.account_id]]) currentRisk *= config.lossGovernor[consecutiveLosses[user.account_id]];
@@ -151,7 +173,6 @@ async function runTick() {
               }
             }
           } else {
-            // 🔄 HYBRID FLIP
             const isOpp = (openPos.side === 'BUY' && signal.signalType === -1) || (openPos.side === 'SELL' && signal.signalType === 1);
             if (isOpp) {
               const slDist = Math.abs(openPos.entryPrice - openPos.slPrice);
@@ -199,12 +220,7 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
         pos.virtualSl = pos.tp1Price; pos.slPrice = pos.tp1Price; pos.qty -= closeQty;
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
-          await tg.sendWebhook({ 
-            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, 
-            be_text: 'TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId, 
-            time: new Date().toISOString() 
-          });
+          await tg.sendWebhook({ type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, be_text: 'TP2 Hit (30% Closed)', ticket: pos.dbId, time: new Date().toISOString() });
         } continue;
       }
     }
@@ -218,12 +234,7 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
         pos.virtualSl = pos.entryPrice; pos.slPrice = pos.entryPrice; pos.qty -= closeQty;
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
-          await tg.sendWebhook({ 
-            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, 
-            be_text: 'TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId, 
-            time: new Date().toISOString() 
-          });
+          await tg.sendWebhook({ type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, be_text: 'TP1 Hit (50% Closed)', ticket: pos.dbId, time: new Date().toISOString() });
         } continue;
       }
     }
@@ -251,11 +262,7 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
   }
 
   if (user.is_master && process.env.IS_MASTER === 'true') {
-    await tg.sendWebhook({ 
-      type: 'TRADE_CLOSE', source: 'MASTER', asset_class: 'CRYPTO', 
-      result: pnl >= 0 ? 'WIN' : 'LOSS', symbol: pos.symbol, direction: pos.side.toUpperCase(), 
-      profit: pnl.toFixed(2), reason: reason, ticket: pos.dbId, time: new Date().toISOString() 
-    });
+    await tg.sendWebhook({ type: 'TRADE_CLOSE', source: 'MASTER', asset_class: 'CRYPTO', result: pnl >= 0 ? 'WIN' : 'LOSS', symbol: pos.symbol, direction: pos.side.toUpperCase(), profit: pnl.toFixed(2), reason: reason, ticket: pos.dbId, time: new Date().toISOString() });
   }
   
   openPositions[user.account_id].splice(index, 1);
