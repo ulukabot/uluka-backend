@@ -10,20 +10,22 @@ const execution = require('./lib/execution');
 const config = require('./config');
 
 // 🛡️ GLOBAL CRASH SHIELD
+// Prevents the bot from dying if an unhandled promise rejection occurs.
 process.on('unhandledRejection', (reason, promise) => {
   console.error('🚨 Unhandled Rejection:', reason.message || reason);
 });
 
-// 🧠 Helper: Identify the primary strategy for DNA tracking
+// 🧠 HELPER: IDENTIFY DOMINANT STRATEGY
+// Used for DNA tracking to know exactly which strategy triggered the trade.
 function getDominantStrategy(signal) {
-  if (signal.signalType === 1) { 
+  if (signal.signalType === 1) { // BUY Signals
     if (signal.obBuy) return 'OB'; 
     if (signal.fvgBuy) return 'FVG';
     if (signal.chochBuy) return 'CHoCH'; 
     if (signal.bosBuy) return 'BOS';
     if (signal.farsightBuy) return 'Farsight'; 
     if (signal.visionBuy) return 'Vision';
-  } else { 
+  } else { // SELL Signals
     if (signal.obSell) return 'OB'; 
     if (signal.fvgSell) return 'FVG';
     if (signal.chochSell) return 'CHoCH'; 
@@ -34,30 +36,35 @@ function getDominantStrategy(signal) {
   return 'Unknown';
 }
 
-// 🕒 Time helper
+// 🕒 TIME HELPER
 const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-// Global state trackers
-const lastCandleTimes = {}; 
-const openPositions = {}; 
-const consecutiveLosses = {}; 
-const symbolCooldowns = {};   
+// 📊 GLOBAL STATE TRACKERS
+const lastCandleTimes = {};       // Tracks the last processed candle time per user/symbol
+const openPositions = {};         // Tracks open positions in memory per user
+const consecutiveLosses = {};     // Tracks consecutive losses per user for the Loss Governor
+const symbolCooldowns = {};       // Tracks 30-min cooldowns after a loss per user/symbol
 
-// 📡 Fetch users from Forex Backend
+// 📡 FETCH USERS FROM FOREX BACKEND
+// The bot loops through all active users in the SaaS database.
 async function fetchUsers() {
   try {
     const res = await fetch('https://uluka-backend-production.up.railway.app/api/crypto/active-users', {
       headers: { 'x-admin-secret': process.env.ADMIN_SECRET }
     });
+    
     if (!res.ok) {
       console.error(`❌ Backend rejected request. HTTP Status: ${res.status}. Check your ADMIN_SECRET!`);
       return [];
     }
+
     const data = await res.json();
+    
     if (!Array.isArray(data)) {
       console.error('❌ Backend returned an error instead of an array:', data);
       return [];
     }
+    
     return data;
   } catch (e) {
     console.error('❌ Failed to fetch users from backend:', e.message);
@@ -65,7 +72,58 @@ async function fetchUsers() {
   }
 }
 
-// 🔄 Main Tick Loop
+// 🔄 SYNC OPEN TRADES ON STARTUP
+// If the bot restarts, this checks the database for OPEN trades, asks Bybit if they are closed,
+// and updates the database accordingly.
+async function syncOpenTrades() {
+  if (!process.env.DATABASE_URL) return;
+  const { Pool } = require('pg');
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  
+  try {
+    const res = await pool.query(`SELECT * FROM crypto_trades WHERE status = 'OPEN'`);
+    
+    if (!res?.rows || res.rows.length === 0) return;
+    
+    console.log(`🔄 Syncing ${res.rows.length} OPEN trades with Bybit...`);
+
+    for (const trade of res.rows) {
+      if (!trade.order_id) continue;
+      
+      const bybit = new BybitClient({ 
+        apiKey: process.env.BYBIT_API_KEY, 
+        apiSecret: process.env.BYBIT_API_SECRET, 
+        testnet: false, 
+        demo: process.env.BYBIT_DEMO === 'true' 
+      });
+
+      const closedData = await bybit.getClosedPnl({ symbol: trade.symbol, orderId: trade.order_id });
+      
+      if (closedData?.list && closedData.list.length > 0) {
+        const pnlData = closedData.list[0];
+        const closePrice = parseFloat(pnlData.avgExitPrice);
+        const pnl = parseFloat(pnlData.closedPnl);
+        
+        let reason = 'Closed on Exchange';
+        if (pnlData.orderType === 'TakeProfit') reason = 'TP Hit';
+        else if (pnlData.orderType === 'StopLoss') reason = 'SL Hit';
+        else if (pnlData.orderType === 'Market') reason = 'Market Closed';
+
+        await pool.query(
+          `UPDATE crypto_trades SET close_price = $1, pnl_usd = $2, status = 'CLOSED', close_reason = $3, closed_at = NOW() WHERE id = $4`,
+          [closePrice, pnl, reason, trade.id]
+        );
+        console.log(`✅ Synced DB Trade #${trade.id} (${trade.symbol}) -> CLOSED with PnL $${pnl}`);
+      }
+    }
+  } catch (err) {
+    console.error('❌ Sync error:', err.message);
+  } finally {
+    await pool.end();
+  }
+}
+
+// 🔄 MAIN TICK LOOP
 async function runTick() {
   const users = await fetchUsers();
   if (!users || users.length === 0) return;
@@ -83,7 +141,7 @@ async function runTick() {
         consecutiveLosses[user.account_id] = 0;
       }
 
-      // 🛡️ Safe Balance Fetch
+      // 🛡️ SAFE BALANCE FETCH
       let balData;
       try {
         balData = await bybit.getBalance();
@@ -104,13 +162,13 @@ async function runTick() {
         continue;
       }
 
-      // 🛡️ Tier Cap Guard
+      // 🛡️ TIER CAP GUARD
       if (equity > user.tier_cap) {
         console.log(`⏭️ Skipping ${user.account_id}: Equity $${equity} exceeds Tier Cap $${user.tier_cap}`);
         continue; 
       }
       
-      // 🛡️ Guardian Angel DD Guard
+      // 🛡️ GUARDIAN ANGEL DD GUARD
       if (user.peak_equity > 0 && equity < (user.peak_equity * 0.90)) { 
         if (user.is_master) {
           await tg.sendMessage(`🚨 <b>ULUKA ULTIMA - GUARDIAN ANGEL</b> 🦉\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nEquity: $${equity}\nPeak: $${user.peak_equity}\nTrading halted for this account.`);
@@ -118,7 +176,7 @@ async function runTick() {
         continue; 
       }
 
-      // Update Equity to Backend
+      // UPDATE PEAK EQUITY TO BACKEND
       if (equity > user.peak_equity || user.daily_start_equity === 0) {
         await fetch('https://uluka-backend-production.up.railway.app/api/crypto/update-equity', {
           method: 'POST',
@@ -136,7 +194,7 @@ async function runTick() {
       for (const symbol of userSymbols) {
         const symbolKey = `${user.account_id}-${symbol}`;
         
-        // 🛡️ Cooldown Check
+        // 🛡️ COOLDOWN CHECK
         if (symbolCooldowns[symbolKey] && Date.now() < symbolCooldowns[symbolKey]) {
           continue;
         }
@@ -145,7 +203,7 @@ async function runTick() {
           lastCandleTimes[symbolKey] = 0;
         }
 
-        // 🛡️ Safe Klines Fetch
+        // 🛡️ SAFE KLINES FETCH
         let klines;
         try {
           klines = await bybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
@@ -160,7 +218,7 @@ async function runTick() {
           continue;
         }
 
-        // 🛡️ Safe Ticker Fetch
+        // 🛡️ SAFE TICKER FETCH
         let ticker;
         try {
           ticker = await bybit.getTicker(symbol);
@@ -174,17 +232,17 @@ async function runTick() {
         
         const currentPrice = parseFloat(ticker.lastPrice);
 
-        // Manage existing open positions for this symbol
+        // MANAGE EXISTING OPEN POSITIONS
         await manageOpenPositions(user, symbol, currentPrice, bybit);
 
-        // Candle Close Gate
+        // CANDLE CLOSE GATE
         const currentCandleTime = parseInt(klines[0][0]); 
         if (lastCandleTimes[symbolKey] === currentCandleTime) {
           continue; 
         }
         lastCandleTimes[symbolKey] = currentCandleTime;
 
-        // 🛡️ Safe Instrument Info Fetch
+        // 🛡️ SAFE INSTRUMENT INFO FETCH
         let info;
         try {
           info = await bybit.getInstrumentsInfo(symbol);
@@ -204,11 +262,12 @@ async function runTick() {
         if (signal.signalType !== 0) {
           const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
           
+          // 🛑 MQL5 RULE: REQUIRE AT LEAST 2 VOTES
           if (dominantVotes < 2) {
             continue;
           }
 
-          // 🧬 DNA Blocking
+          // 🧬 DNA BLOCKING
           const stratName = getDominantStrategy(signal);
           const dnaStats = await db.getDNAStats(symbol, 'strategy', stratName);
           
@@ -224,7 +283,7 @@ async function runTick() {
           const openPos = openPositions[user.account_id].find(p => p.symbol === symbol);
           
           if (!openPos) {
-            // 🛡️ Loss Governor Check
+            // 🛡️ LOSS GOVERNOR CHECK
             if (consecutiveLosses[user.account_id] >= config.maxConsecutiveLosses) {
               console.log(`🛑 CAPITAL PROTECTION: ${user.account_id} halted due to consecutive losses.`);
               continue;
@@ -250,7 +309,7 @@ async function runTick() {
               }
             }
           } else {
-            // 🔄 Hybrid Flip Logic
+            // 🔄 HYBRID FLIP LOGIC
             const isOpp = (openPos.side === 'BUY' && signal.signalType === -1) || (openPos.side === 'SELL' && signal.signalType === 1);
             
             if (isOpp) {
@@ -280,7 +339,7 @@ async function runTick() {
         }
       }
       
-      // 1-second delay between users to protect API limits
+      // 1-SECOND DELAY BETWEEN USERS TO PROTECT API LIMITS
       await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (e) { 
@@ -289,7 +348,7 @@ async function runTick() {
   }
 }
 
-// 🛡️ Position Management (TPs, Breakeven, SL)
+// 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL)
 async function manageOpenPositions(user, symbol, currentPrice, bybit) {
   if (!openPositions[user.account_id]) return;
   const positions = openPositions[user.account_id];
@@ -324,9 +383,15 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
           await tg.sendWebhook({ 
-            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, 
-            be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId, time: now() 
+            type: 'POSITION_UPDATE', 
+            source: 'MASTER', 
+            asset_class: 'CRYPTO', 
+            symbol: pos.symbol, 
+            direction: pos.side.toUpperCase(), 
+            new_sl: pos.tp1Price, 
+            be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', 
+            ticket: pos.dbId, 
+            time: now() 
           });
         } 
         continue;
@@ -350,9 +415,15 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
           await tg.sendWebhook({ 
-            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, 
-            be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId, time: now() 
+            type: 'POSITION_UPDATE', 
+            source: 'MASTER', 
+            asset_class: 'CRYPTO', 
+            symbol: pos.symbol, 
+            direction: pos.side.toUpperCase(), 
+            new_sl: pos.entryPrice, 
+            be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', 
+            ticket: pos.dbId, 
+            time: now() 
           });
         } 
         continue;
@@ -368,13 +439,13 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
   }
 }
 
-// 📝 Close Trade & Update Metrics
+// 📝 CLOSE TRADE & UPDATE METRICS
 async function closeTrade(user, index, pos, closePrice, reason, bybit) {
   let pnl = pos.side === 'Buy' ? (closePrice - pos.entryPrice) * pos.qty : (pos.entryPrice - closePrice) * pos.qty;
   
   await db.logTradeClose(pos.dbId, closePrice, pnl, reason);
 
-  // Loss Governor Update
+  // LOSS GOVERNOR UPDATE
   if (pnl >= 0) {
     consecutiveLosses[user.account_id] = 0;
   } else {
@@ -382,7 +453,7 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
     symbolCooldowns[`${user.account_id}-${pos.symbol}`] = Date.now() + (config.symbolCooldownMinutes * 60 * 1000);
   }
 
-  // DNA Update
+  // DNA UPDATE
   if (pos.primaryStrategy && pos.regime) {
     await db.updateDNA(pos.symbol, 'strategy', pos.primaryStrategy, pnl >= 0, pnl);
     await db.updateDNA(pos.symbol, 'regime', pos.regime, pnl >= 0, pnl);
@@ -390,25 +461,36 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
 
   console.log(`\n[${now()}] 🔴 TRADE CLOSED: ${user.account_id} | ${pos.symbol} | PnL: $${pnl.toFixed(2)}`);
 
-  // Webhook to Channels (No Private Alert)
+  // WEBHOOK TO CHANNELS (No Private Alert)
   if (user.is_master && process.env.IS_MASTER === 'true') {
     await tg.sendWebhook({ 
-      type: 'TRADE_CLOSE', source: 'MASTER', asset_class: 'CRYPTO', 
-      result: pnl >= 0 ? 'WIN' : 'LOSS', symbol: pos.symbol, direction: pos.side.toUpperCase(), 
-      profit: pnl.toFixed(2), reason: reason, ticket: pos.dbId, time: now() 
+      type: 'TRADE_CLOSE', 
+      source: 'MASTER', 
+      asset_class: 'CRYPTO', 
+      result: pnl >= 0 ? 'WIN' : 'LOSS', 
+      symbol: pos.symbol, 
+      direction: pos.side.toUpperCase(), 
+      profit: pnl.toFixed(2), 
+      reason: reason, 
+      ticket: pos.dbId, 
+      time: now() 
     });
   }
   
   openPositions[user.account_id].splice(index, 1);
 }
 
-// 🚀 Startup & Main Loop
+// 🚀 STARTUP & MAIN LOOP
 async function startupTest() {
   console.log(`[VERSION 3.0] 🦉 Uluka Ultima - Crypto Engine Starting...`);
   
+  // Private Boot Notification
   if (process.env.TELEGRAM_BOT_TOKEN) {
     await tg.sendMessage('🦉 <b>System Check:</b> Uluka Ultima has booted up on Railway!').catch(() => {});
   }
+
+  // Sync open trades on startup
+  await syncOpenTrades();
 }
 
 async function mainLoop() { 
@@ -416,7 +498,7 @@ async function mainLoop() {
   setTimeout(mainLoop, 15000); 
 }
 
-// Execute
+// EXECUTE
 startupTest().then(() => {
   mainLoop();
 });
