@@ -7,7 +7,6 @@ const tradeEngine = require('./lib/tradeEngine');
 const db = require('./lib/db');
 const tg = require('./lib/telegram');
 const execution = require('./lib/execution');
-const liquidity = require('./lib/liquidity');
 const config = require('./config');
 
 // 🛡️ GLOBAL CRASH SHIELD
@@ -340,7 +339,7 @@ async function runTick() {
               const adjustedConfig = { ...config, riskPerTradePercent: currentRisk };
               
               // 📊 CHECK LIQUIDITY WALLS
-              const isSafe = await liquidity.checkLiquidity(bybit, symbol, signal.signalType === 1 ? 'BUY' : 'SELL', currentPrice);
+              const isSafe = await checkLiquidity(bybit, symbol, signal.signalType === 1 ? 'BUY' : 'SELL', currentPrice);
               if (!isSafe) {
                 console.log(`⏭️ Skipping ${symbol}: Large liquidity wall detected.`);
                 continue;
@@ -510,6 +509,36 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
   }
   
   openPositions[user.account_id].splice(index, 1);
+}
+
+// 📊 LIQUIDITY CHECK FUNCTION (Inline)
+async function checkLiquidity(bybit, symbol, tradeSide, currentPrice) {
+  try {
+    const res = await fetch(`${bybit.baseUrl}/v5/market/orderbook?category=linear&symbol=${symbol}&limit=50`);
+    const json = await res.json();
+    if (!json.result || !json.result.b || !json.result.a) return true;
+    
+    const bids = json.result.b; 
+    const asks = json.result.a;
+    let bidVol = 0;
+    let askVol = 0;
+    const range = currentPrice * 0.005;
+    
+    bids.forEach(b => { if (parseFloat(b[0]) > currentPrice - range) bidVol += parseFloat(b[1]); });
+    asks.forEach(a => { if (parseFloat(a[0]) < currentPrice + range) askVol += parseFloat(a[1]); });
+    
+    if (bidVol === 0 || askVol === 0) return true;
+    
+    const imbalance = bidVol / (bidVol + askVol);
+    console.log(`📊 Liquidity ${symbol}: Imbalance ${(imbalance * 100).toFixed(1)}%`);
+    
+    if (tradeSide === 'BUY' && imbalance < 0.40) return false;
+    if (tradeSide === 'SELL' && imbalance > 0.60) return false;
+    
+    return true; 
+  } catch (e) {
+    return true;
+  }
 }
 
 // 🚀 STARTUP & MAIN LOOP
