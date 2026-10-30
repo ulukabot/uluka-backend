@@ -63,7 +63,8 @@ async function runTick() {
         continue;
       }
       
-      if (!balData || !balData.list || balData.list.length === 0) {
+      // 🛡️ DOUBLE SAFETY CHECK FOR ARRAYS
+      if (!balData || !balData.list || !Array.isArray(balData.list) || balData.list.length === 0) {
         console.log(`⏭️ Skipping ${user.account_id}: Empty balance list from Bybit.`);
         continue;
       }
@@ -72,15 +73,9 @@ async function runTick() {
       const equity = parseFloat(usdt?.equity || 0);
       if (equity <= 0) continue;
 
-      // 🛡️ TIER & GUARDIAN ANGEL (DD) GUARDS
-      if (equity > user.tier_cap) { 
-        continue; 
-      }
-      
+      if (equity > user.tier_cap) continue;
       if (user.peak_equity > 0 && equity < (user.peak_equity * 0.90)) { 
-        if (user.is_master) {
-          await tg.sendMessage(`🚨 <b>GUARDIAN ANGEL</b>\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nTrading halted.`);
-        }
+        if (user.is_master) await tg.sendMessage(`🚨 <b>GUARDIAN ANGEL</b>\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nTrading halted.`);
         continue; 
       }
 
@@ -100,42 +95,32 @@ async function runTick() {
         if (symbolCooldowns[symbolKey] && Date.now() < symbolCooldowns[symbolKey]) continue;
         if (lastCandleTimes[symbolKey] === undefined) lastCandleTimes[symbolKey] = 0;
 
-        // 🛡️ SAFE KLINES FETCH
         let klines;
         try {
           klines = await bybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
-        } catch (e) {
-          continue;
-        }
+        } catch (e) { continue; }
         
-        if (!klines || klines.length < 50) continue;
+        if (!klines || !Array.isArray(klines) || klines.length < 50) continue;
+        if (!klines[0] || !klines[0][0]) continue; // 👈 Triple safety for candle data
 
-        // 🛡️ SAFE TICKER FETCH
         let ticker;
         try {
           ticker = await bybit.getTicker(symbol);
-        } catch (e) {
-          continue;
-        }
+        } catch (e) { continue; }
         
         if (!ticker || !ticker.lastPrice) continue;
         const currentPrice = parseFloat(ticker.lastPrice);
 
         await manageOpenPositions(user, symbol, currentPrice, bybit);
 
-        // 🛡️ SAFE CANDLE PARSE
-        if (!klines[0] || !klines[0][0]) continue;
         const currentCandleTime = parseInt(klines[0][0]); 
         if (lastCandleTimes[symbolKey] === currentCandleTime) continue; 
         lastCandleTimes[symbolKey] = currentCandleTime;
 
-        // 🛡️ SAFE INSTRUMENT INFO FETCH
         let info;
         try {
           info = await bybit.getInstrumentsInfo(symbol);
-        } catch (e) {
-          continue;
-        }
+        } catch (e) { continue; }
 
         if (!info || !info.priceFilter) continue;
         const tickSize = parseFloat(info.priceFilter.tickSize);
@@ -273,5 +258,5 @@ async function mainLoop() {
   setTimeout(mainLoop, 15000); 
 }
 
-console.log(`🤖 Uluka Crypto SaaS Engine Starting...`);
+console.log(`[VERSION 2.0] 🤖 Uluka Crypto SaaS Engine Starting...`); // 👈 Debug line
 mainLoop();
