@@ -9,8 +9,8 @@ const tg = require('./lib/telegram');
 const execution = require('./lib/execution');
 const config = require('./config');
 
-// 🛡️ Global Error Shield
-process.on('unhandledRejection', (reason) => {
+// 🛡️ GLOBAL CRASH SHIELD
+process.on('unhandledRejection', (reason, promise) => {
   console.error('🚨 Unhandled Rejection:', reason.message || reason);
 });
 
@@ -34,6 +34,9 @@ function getDominantStrategy(signal) {
   return 'Unknown';
 }
 
+// 🕒 Time helper
+const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
+
 // Global state trackers
 const lastCandleTimes = {}; 
 const openPositions = {}; 
@@ -46,11 +49,18 @@ async function fetchUsers() {
     const res = await fetch('https://uluka-backend-production.up.railway.app/api/crypto/active-users', {
       headers: { 'x-admin-secret': process.env.ADMIN_SECRET }
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`❌ Backend rejected request. HTTP Status: ${res.status}. Check your ADMIN_SECRET!`);
+      return [];
+    }
     const data = await res.json();
-    return Array.isArray(data) ? data : [];
+    if (!Array.isArray(data)) {
+      console.error('❌ Backend returned an error instead of an array:', data);
+      return [];
+    }
+    return data;
   } catch (e) {
-    console.error('❌ Failed to fetch users:', e.message);
+    console.error('❌ Failed to fetch users from backend:', e.message);
     return [];
   }
 }
@@ -69,7 +79,9 @@ async function runTick() {
         demo: process.env.BYBIT_DEMO === 'true' 
       });
       
-      if (!consecutiveLosses[user.account_id]) consecutiveLosses[user.account_id] = 0;
+      if (!consecutiveLosses[user.account_id]) {
+        consecutiveLosses[user.account_id] = 0;
+      }
 
       // 🛡️ Safe Balance Fetch
       let balData;
@@ -87,17 +99,21 @@ async function runTick() {
 
       const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
       const equity = parseFloat(usdt?.equity || 0);
-      if (equity <= 0) continue;
+      
+      if (equity <= 0) {
+        continue;
+      }
 
       // 🛡️ Tier Cap Guard
       if (equity > user.tier_cap) {
+        console.log(`⏭️ Skipping ${user.account_id}: Equity $${equity} exceeds Tier Cap $${user.tier_cap}`);
         continue; 
       }
       
       // 🛡️ Guardian Angel DD Guard
       if (user.peak_equity > 0 && equity < (user.peak_equity * 0.90)) { 
         if (user.is_master) {
-          await tg.sendMessage(`🚨 <b>GUARDIAN ANGEL</b>\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nTrading halted.`);
+          await tg.sendMessage(`🚨 <b>ULUKA ULTIMA - GUARDIAN ANGEL</b> 🦉\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nEquity: $${equity}\nPeak: $${user.peak_equity}\nTrading halted for this account.`);
         }
         continue; 
       }
@@ -112,31 +128,50 @@ async function runTick() {
       }
 
       const userSymbols = user.symbols.split(',');
-      if (!openPositions[user.account_id]) openPositions[user.account_id] = [];
+      
+      if (!openPositions[user.account_id]) {
+        openPositions[user.account_id] = [];
+      }
 
       for (const symbol of userSymbols) {
         const symbolKey = `${user.account_id}-${symbol}`;
         
         // 🛡️ Cooldown Check
-        if (symbolCooldowns[symbolKey] && Date.now() < symbolCooldowns[symbolKey]) continue;
-        if (lastCandleTimes[symbolKey] === undefined) lastCandleTimes[symbolKey] = 0;
+        if (symbolCooldowns[symbolKey] && Date.now() < symbolCooldowns[symbolKey]) {
+          continue;
+        }
+        
+        if (lastCandleTimes[symbolKey] === undefined) {
+          lastCandleTimes[symbolKey] = 0;
+        }
 
         // 🛡️ Safe Klines Fetch
         let klines;
         try {
           klines = await bybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
-        } catch (e) { continue; }
+        } catch (e) { 
+          continue; 
+        }
         
-        if (!klines || !Array.isArray(klines) || klines.length < 50) continue;
-        if (!klines[0] || !klines[0][0]) continue;
+        if (!klines || !Array.isArray(klines) || klines.length < 50) {
+          continue;
+        }
+        if (!klines[0] || !klines[0][0]) {
+          continue;
+        }
 
         // 🛡️ Safe Ticker Fetch
         let ticker;
         try {
           ticker = await bybit.getTicker(symbol);
-        } catch (e) { continue; }
+        } catch (e) { 
+          continue; 
+        }
         
-        if (!ticker || !ticker.lastPrice) continue;
+        if (!ticker || !ticker.lastPrice) {
+          continue;
+        }
+        
         const currentPrice = parseFloat(ticker.lastPrice);
 
         // Manage existing open positions for this symbol
@@ -144,16 +179,23 @@ async function runTick() {
 
         // Candle Close Gate
         const currentCandleTime = parseInt(klines[0][0]); 
-        if (lastCandleTimes[symbolKey] === currentCandleTime) continue; 
+        if (lastCandleTimes[symbolKey] === currentCandleTime) {
+          continue; 
+        }
         lastCandleTimes[symbolKey] = currentCandleTime;
 
         // 🛡️ Safe Instrument Info Fetch
         let info;
         try {
           info = await bybit.getInstrumentsInfo(symbol);
-        } catch (e) { continue; }
+        } catch (e) { 
+          continue; 
+        }
 
-        if (!info || !info.priceFilter) continue;
+        if (!info || !info.priceFilter) {
+          continue;
+        }
+        
         const tickSize = parseFloat(info.priceFilter.tickSize);
         
         const { closes } = ind.parseKlines(klines);
@@ -161,26 +203,37 @@ async function runTick() {
 
         if (signal.signalType !== 0) {
           const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
-          if (dominantVotes < 2) continue;
+          
+          if (dominantVotes < 2) {
+            continue;
+          }
 
           // 🧬 DNA Blocking
           const stratName = getDominantStrategy(signal);
           const dnaStats = await db.getDNAStats(symbol, 'strategy', stratName);
+          
           if (dnaStats) {
             const total = dnaStats.wins + dnaStats.losses;
             const winRate = (dnaStats.wins / total) * 100;
-            if (total >= 5 && winRate < 30) continue;
+            if (total >= 5 && winRate < 30) {
+              console.log(`🧬 DNA BLOCK: ${user.account_id} | ${symbol} ${stratName} has a ${winRate.toFixed(1)}% win rate.`);
+              continue;
+            }
           }
 
           const openPos = openPositions[user.account_id].find(p => p.symbol === symbol);
           
           if (!openPos) {
             // 🛡️ Loss Governor Check
-            if (consecutiveLosses[user.account_id] >= config.maxConsecutiveLosses) continue;
+            if (consecutiveLosses[user.account_id] >= config.maxConsecutiveLosses) {
+              console.log(`🛑 CAPITAL PROTECTION: ${user.account_id} halted due to consecutive losses.`);
+              continue;
+            }
             
             let currentRisk = user.risk_percent;
             if (config.lossGovernor[consecutiveLosses[user.account_id]]) {
               currentRisk *= config.lossGovernor[consecutiveLosses[user.account_id]];
+              console.log(`⚠️ Loss Governor Active for ${user.account_id}: Reduced risk to ${currentRisk}%`);
             }
 
             const adjustedConfig = { ...config, riskPerTradePercent: currentRisk };
@@ -199,14 +252,16 @@ async function runTick() {
           } else {
             // 🔄 Hybrid Flip Logic
             const isOpp = (openPos.side === 'BUY' && signal.signalType === -1) || (openPos.side === 'SELL' && signal.signalType === 1);
+            
             if (isOpp) {
               const slDist = Math.abs(openPos.entryPrice - openPos.slPrice);
               const lossDist = openPos.side === 'BUY' ? (openPos.entryPrice - currentPrice) : (currentPrice - openPos.entryPrice);
               
               if (lossDist > (slDist * 0.50)) {
+                console.log(`\n🔄 HYBRID FLIP TRIGGERED for ${user.account_id} on ${symbol}`);
                 await bybit.closePosition({ symbol: openPos.symbol, positionSide: openPos.side, qty: openPos.qty });
                 const idx = openPositions[user.account_id].indexOf(openPos);
-                await closeTrade(user, idx, openPos, currentPrice, 'Hybrid Flip', bybit);
+                await closeTrade(user, idx, openPos, currentPrice, 'Hybrid Flip (Reversal)', bybit);
                 
                 const plan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, { ...config, riskPerTradePercent: user.risk_percent });
                 if (plan) {
@@ -224,8 +279,10 @@ async function runTick() {
           }
         }
       }
+      
       // 1-second delay between users to protect API limits
       await new Promise(resolve => setTimeout(resolve, 1000));
+      
     } catch (e) { 
       console.error(`❌ Error on ${user.account_id}:`, e.message); 
     }
@@ -240,60 +297,69 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
   for (let i = positions.length - 1; i >= 0; i--) {
     let pos = positions[i];
     if (pos.symbol !== symbol) continue;
+    
     const activeSl = pos.virtualSl || pos.slPrice;
 
-    // TP3
+    // 🛑 1. CHECK TP3 (Full close)
     if ((pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price)) {
       await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: pos.qty });
-      await closeTrade(user, i, pos, pos.tp3Price, 'TP3 Hit', bybit); 
+      await closeTrade(user, i, pos, pos.tp3Price, 'TP3 Hit (Full Close)', bybit); 
       continue;
     }
 
-    // TP2
+    // 🛑 2. CHECK TP2 (Close 30%, move SL to TP1)
     if ((pos.side === 'Buy' && currentPrice >= pos.tp2Price) || (pos.side === 'Sell' && currentPrice <= pos.tp2Price)) {
       if (!pos.tp2Hit) {
         pos.tp2Hit = true;
         const closeQty = parseFloat((pos.qty * 0.30).toFixed(4));
+        
         await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: closeQty });
         await bybit.setTradingStop({ symbol: pos.symbol, stopLoss: pos.tp1Price });
+        
         pos.virtualSl = pos.tp1Price; 
         pos.slPrice = pos.tp1Price; 
         pos.qty -= closeQty;
+        
+        console.log(`\n[${now()}] ✂️ TP2 HIT: ${user.account_id} | ${symbol} | Closed 30% | SL moved to TP1`);
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
           await tg.sendWebhook({ 
             type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
             symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, 
-            be_text: 'TP2 Hit (30% Closed)', ticket: pos.dbId, time: new Date().toISOString() 
+            be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId, time: now() 
           });
         } 
         continue;
       }
     }
 
-    // TP1
+    // 🛑 3. CHECK TP1 (Close 50%, move SL to Breakeven)
     if ((pos.side === 'Buy' && currentPrice >= pos.tp1Price) || (pos.side === 'Sell' && currentPrice <= pos.tp1Price)) {
       if (!pos.tp1Hit) {
         pos.tp1Hit = true;
         const closeQty = parseFloat((pos.qty * 0.50).toFixed(4));
+        
         await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: closeQty });
         await bybit.setTradingStop({ symbol: pos.symbol, stopLoss: pos.entryPrice });
+        
         pos.virtualSl = pos.entryPrice; 
         pos.slPrice = pos.entryPrice; 
         pos.qty -= closeQty;
+        
+        console.log(`\n[${now()}] ✂️ TP1 HIT: ${user.account_id} | ${symbol} | Closed 50% | SL moved to Entry`);
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
           await tg.sendWebhook({ 
             type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
             symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, 
-            be_text: 'TP1 Hit (50% Closed)', ticket: pos.dbId, time: new Date().toISOString() 
+            be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId, time: now() 
           });
         } 
         continue;
       }
     }
 
-    // SL
+    // 🛑 4. CHECK STOP LOSS
     if ((pos.side === 'Buy' && currentPrice <= activeSl) || (pos.side === 'Sell' && currentPrice >= activeSl)) {
       await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: pos.qty });
       await closeTrade(user, i, pos, activeSl, 'SL Hit', bybit); 
@@ -305,6 +371,7 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
 // 📝 Close Trade & Update Metrics
 async function closeTrade(user, index, pos, closePrice, reason, bybit) {
   let pnl = pos.side === 'Buy' ? (closePrice - pos.entryPrice) * pos.qty : (pos.entryPrice - closePrice) * pos.qty;
+  
   await db.logTradeClose(pos.dbId, closePrice, pnl, reason);
 
   // Loss Governor Update
@@ -321,12 +388,14 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
     await db.updateDNA(pos.symbol, 'regime', pos.regime, pnl >= 0, pnl);
   }
 
+  console.log(`\n[${now()}] 🔴 TRADE CLOSED: ${user.account_id} | ${pos.symbol} | PnL: $${pnl.toFixed(2)}`);
+
   // Webhook to Channels (No Private Alert)
   if (user.is_master && process.env.IS_MASTER === 'true') {
     await tg.sendWebhook({ 
       type: 'TRADE_CLOSE', source: 'MASTER', asset_class: 'CRYPTO', 
       result: pnl >= 0 ? 'WIN' : 'LOSS', symbol: pos.symbol, direction: pos.side.toUpperCase(), 
-      profit: pnl.toFixed(2), reason: reason, ticket: pos.dbId, time: new Date().toISOString() 
+      profit: pnl.toFixed(2), reason: reason, ticket: pos.dbId, time: now() 
     });
   }
   
@@ -335,11 +404,10 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
 
 // 🚀 Startup & Main Loop
 async function startupTest() {
-  console.log(`[VERSION 2.0] 🤖 Uluka Crypto SaaS Engine Starting...`);
+  console.log(`[VERSION 3.0] 🦉 Uluka Ultima - Crypto Engine Starting...`);
   
-  // Private Boot Notification
   if (process.env.TELEGRAM_BOT_TOKEN) {
-    await tg.sendMessage('🤖 <b>System Check:</b> Crypto Bot SaaS Engine has booted up on Railway!').catch(() => {});
+    await tg.sendMessage('🦉 <b>System Check:</b> Uluka Ultima has booted up on Railway!').catch(() => {});
   }
 }
 
