@@ -5834,10 +5834,6 @@ app.post('/api/crypto/settings', async (req, res) => {
     }
 });
 
-// ─── START SERVER (Ensure this is only here ONCE) ───
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
-
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
