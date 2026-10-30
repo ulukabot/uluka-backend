@@ -258,5 +258,12 @@ async function mainLoop() {
   setTimeout(mainLoop, 15000); 
 }
 
-console.log(`[VERSION 2.0] 🤖 Uluka Crypto SaaS Engine Starting...`); // 👈 Debug line
+console.log(`[VERSION 2.0] 🤖 Uluka Crypto SaaS Engine Starting...`);
+
+// 👈 Send the private boot notification
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  tg.sendMessage('🤖 <b>System Check:</b> Crypto Bot SaaS Engine has booted up on Railway!')
+    .catch(() => {});
+}
+
 mainLoop();
