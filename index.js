@@ -7,6 +7,7 @@ const tradeEngine = require('./lib/tradeEngine');
 const db = require('./lib/db');
 const tg = require('./lib/telegram');
 const execution = require('./lib/execution');
+const liquidity = require('./lib/liquidity');
 const config = require('./config');
 
 // 🛡️ GLOBAL CRASH SHIELD
@@ -294,6 +295,21 @@ async function runTick() {
               continue;
             }
 
+                   // 📰 CHECK NEWS FILTER
+       if (process.env.ENABLE_NEWS_FILTER !== 'false') {
+         try {
+           const newsRes = await fetch('https://uluka-backend-production.up.railway.app/api/test-news');
+           const newsData = await newsRes.json();
+           
+           if (newsData.high_news_blocked || newsData.medium_news_blocked) {
+             console.log(`📰 NEWS BLOCK: Skipping ${symbol} — High: ${newsData.high_news_blocked}, Medium: ${newsData.medium_news_blocked}`);
+             continue; // Skip trade
+           }
+         } catch (e) {
+           console.error('❌ News API check failed:', e.message);
+         }
+       }
+
             // 🧬 DNA BLOCKING
             const stratName = getDominantStrategy(signal);
             const dnaStats = await db.getDNAStats(symbol, 'strategy', stratName);
@@ -322,6 +338,12 @@ async function runTick() {
               }
 
               const adjustedConfig = { ...config, riskPerTradePercent: currentRisk };
+                       // 📊 CHECK LIQUIDITY WALLS
+         const isSafe = await liquidity.checkLiquidity(bybit, symbol, signal.signalType === 1 ? 'BUY' : 'SELL', currentPrice);
+         if (!isSafe) {
+           console.log(`⏭️ Skipping ${symbol}: Large liquidity wall detected.`);
+           continue;
+         }
               const plan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, adjustedConfig);
               
               if (plan) {
