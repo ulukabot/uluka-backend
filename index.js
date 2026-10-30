@@ -35,7 +35,19 @@ async function fetchUsers() {
     const res = await fetch('https://uluka-backend-production.up.railway.app/api/crypto/active-users', {
       headers: { 'x-admin-secret': process.env.ADMIN_SECRET }
     });
-    return await res.json();
+    
+    if (!res.ok) {
+      console.error(`❌ Backend rejected request. HTTP Status: ${res.status}. Check your ADMIN_SECRET!`);
+      return [];
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      console.error('❌ Backend returned an error instead of an array:', data);
+      return [];
+    }
+    
+    return data;
   } catch (e) {
     console.error('❌ Failed to fetch users from backend:', e.message);
     return [];
