@@ -179,13 +179,37 @@ async function runTick() {
         continue; 
       }
       
-      // 🛡️ GUARDIAN ANGEL DD GUARD
+    // 🛡️ GUARDIAN ANGEL DD GUARD & WITHDRAWAL DETECTOR
       if (user.peak_equity > 0 && equity < (user.peak_equity * 0.90)) { 
-        if (user.is_master) {
-          await tg.sendMessage(`🚨 <b>ULUKA ULTIMA - GUARDIAN ANGEL</b> 🦉\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nEquity: $${equity}\nPeak: $${user.peak_equity}\nTrading halted for this account.`);
+        const dropPercent = ((user.peak_equity - equity) / user.peak_equity) * 100;
+        const activeTrades = openPositions[user.account_id] ? openPositions[user.account_id].length : 0;
+        
+        // 1. WITHDRAWAL DETECTION (Drop > 50% and no open trades)
+        if (dropPercent > 50 && activeTrades === 0) {
+          console.log(`💰 WITHDRAWAL DETECTED for ${user.account_id}. Resetting peak equity to $${equity}`);
+          
+          // Update the database with the new lower peak
+          await fetch('https://uluka-backend-production.up.railway.app/api/crypto/update-equity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-secret': process.env.ADMIN_SECRET },
+            body: JSON.stringify({ account_id: user.account_id, peak: equity, daily_start: equity })
+          }).catch(() => {});
+          
+          if (user.is_master) {
+            await tg.sendMessage(`💰 <b>WITHDRAWAL DETECTED</b> 🦉\n\nAccount: ${user.account_id}\nNew Equity: $${equity}\nPeak Equity Reset. Trading will resume.`);
+          }
+          continue; 
+        } 
+        
+        // 2. ACTUAL DRAWDOWN (Trigger Guardian Angel ONCE)
+        else {
+          if (user.is_master && !ddAlertSent[user.account_id]) {
+            await tg.sendMessage(`🚨 <b>ULUKA ULTIMA - GUARDIAN ANGEL</b> 🦉\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nEquity: $${equity}\nPeak: $${user.peak_equity}\nTrading halted for this account.`);
+            ddAlertSent[user.account_id] = true; // 👈 STOP THE SPAM
+          }
+          continue; 
         }
-        continue; 
-      }
+      } else {
 
       // UPDATE PEAK EQUITY TO BACKEND
       if (equity > user.peak_equity || user.daily_start_equity === 0) {
