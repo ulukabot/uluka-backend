@@ -41,7 +41,8 @@ const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
 const lastCandleTimes = {};       
 const openPositions = {};         
 const consecutiveLosses = {};     
-const symbolCooldowns = {};       
+const symbolCooldowns = {};   
+const ddAlertSent = {};
 
 // 📡 FETCH USERS FROM FOREX BACKEND
 async function fetchUsers() {
