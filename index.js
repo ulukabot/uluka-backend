@@ -3122,81 +3122,63 @@ let lastSourceUsed = "None";
 
 async function updateNewsCache() {
     try {
-        const now = Date.now();
-        let data = [];
-        let sourceUsed = "";
+        const now = new Date();
+        const start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Yesterday
+        const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Next week
 
-        if (process.env.FINNHUB_API_KEY) {
-            try {
-                const key = process.env.FINNHUB_API_KEY;
-                const url = `https://finnhub.io/api/v1/news?category=forex&minId=0&token=${key}`;
-                const response = await fetch(url, { timeout: 8000 });
-                if (response.ok) {
-                    const news = await response.json();
-                    if (Array.isArray(news) && news.length > 0) {
-                        const highKeywords = ['fomc', 'fed', 'interest rate', 'nonfarm', 'cpi', 'inflation', 'gdp', 'employment'];
-                        const mediumKeywords = ['jobless', 'retail', 'housing', 'durable', 'trade', 'manufacturing', 'ism', 'consumer confidence'];
-                        const filtered = news
-                            .filter(item => {
-                                const h = (item.headline || '').toLowerCase();
-                                const s = (item.summary || '').toLowerCase();
-                                return h.includes('usd') || s.includes('usd') || h.includes('dollar') || s.includes('dollar');
-                            })
-                            .map(item => {
-                                const h = (item.headline || '').toLowerCase();
-                                let impact = 'MEDIUM';
-                                if (highKeywords.some(kw => h.includes(kw))) impact = 'HIGH';
-                                else if (mediumKeywords.some(kw => h.includes(kw))) impact = 'MEDIUM';
-                                return {
-                                    title: item.headline || 'N/A',
-                                    impact: impact,
-                                    time: new Date(item.datetime * 1000).toISOString()
-                                };
-                            });
-                        if (filtered.length > 0) {
-                            data = filtered;
-                            sourceUsed = "Finnhub News";
-                            console.log(`✅ Finnhub News: ${data.length} USD-related events`);
-                        }
-                    }
-                }
-            } catch (e) {
-                console.warn('⚠️ Finnhub News error:', e.message);
+        // TradingView's public calendar endpoint (Free, no API key)
+        const url = `https://economic-calendar.tradingview.com/events?from=${start}&to=${end}&countries=US,EU,GB,JP,CA,AU,CH,NZ`;
+        
+        console.log('📰 Fetching Economic Calendar from TradingView...');
+        const res = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Origin': 'https://www.tradingview.com',
+                'Referer': 'https://www.tradingview.com/'
             }
+        });
+
+        if (!res.ok) {
+            console.warn('⚠️ TradingView News Fetch Failed:', res.status);
+            return;
         }
 
+        const json = await res.json();
+        const events = json.result || [];
+
+        // Reset flags
         highImpactUSDBlock = false;
         mediumImpactUSDBlock = false;
 
-        for (const event of data) {
-            if (!event.time) continue;
-            const eventTime = new Date(event.time).getTime();
-            if (eventTime > now && (eventTime - now) < 1800000) {
-                const impact = event.impact;
-                if (impact === 'HIGH') {
-                    highImpactUSDBlock = true;
-                    console.log(`📰 HIGH EVENT: ${event.title} at ${event.time}`);
-                } else if (impact === 'MEDIUM') {
-                    mediumImpactUSDBlock = true;
-                    console.log(`📰 MEDIUM EVENT: ${event.title} at ${event.time}`);
-                }
+        for (const event of events) {
+            const eventTime = new Date(event.date).getTime();
+            
+            // Check if event is within the next 30 mins or past 30 mins
+            const timeDiff = eventTime - Date.now();
+            if (timeDiff < -1800000 || timeDiff > 1800000) continue; 
+
+            // Check if it affects USD (or change to specific currencies)
+            const currency = event.currency;
+            if (!['USD', 'EUR', 'GBP'].includes(currency)) continue;
+
+            // TradingView uses: 1 = Low, 2 = Medium, 3 = High
+            const impact = event.importance; 
+            
+            if (impact === 3) {
+                highImpactUSDBlock = true;
+                console.log(`🔴 HIGH IMPACT: ${event.title} (${currency}) at ${event.date}`);
+            } else if (impact === 2) {
+                mediumImpactUSDBlock = true;
+                console.log(`🟠 MEDIUM IMPACT: ${event.title} (${currency}) at ${event.date}`);
             }
         }
 
         lastNewsCheck = Date.now();
-
-        if (sourceUsed) {
-            lastSourceUsed = sourceUsed;
-            console.log(`📰 News cache updated from ${sourceUsed} | High: ${highImpactUSDBlock} | Medium: ${mediumImpactUSDBlock}`);
-        } else {
-            console.warn('⚠️ No news data – block disabled.');
-        }
+        lastSourceUsed = "TradingView Calendar";
+        console.log(`✅ Calendar updated. High Block: ${highImpactUSDBlock} | Medium Block: ${mediumImpactUSDBlock}`);
 
     } catch (err) {
-        highImpactUSDBlock = false;
-        mediumImpactUSDBlock = false;
-        lastNewsCheck = Date.now();
-        console.warn('📰 News cache error:', err.message);
+        console.error('📰 News cache error:', err.message);
     }
 }
 // ─── API: Test News Status ──────────────────────────────────
