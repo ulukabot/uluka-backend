@@ -55,7 +55,14 @@ async function runTick() {
       const bybit = new BybitClient({ apiKey: user.api_key, apiSecret: user.api_secret, testnet: false, demo: process.env.BYBIT_DEMO === 'true' });
       if (!consecutiveLosses[user.account_id]) consecutiveLosses[user.account_id] = 0;
 
-      const balData = await bybit.getBalance();
+            const balData = await bybit.getBalance();
+      
+      // 👈 SAFETY CHECK: If Bybit returns an empty list, skip this user for now
+      if (!balData || !balData.list || balData.list.length === 0) {
+        console.log(`⏭️ Skipping ${user.account_id}: Balance data unavailable from Bybit.`);
+        continue;
+      }
+
       const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
       const equity = parseFloat(usdt?.equity || 0);
       if (equity <= 0) continue;
