@@ -295,20 +295,20 @@ async function runTick() {
               continue;
             }
 
-                   // 📰 CHECK NEWS FILTER
-       if (process.env.ENABLE_NEWS_FILTER !== 'false') {
-         try {
-           const newsRes = await fetch('https://uluka-backend-production.up.railway.app/api/test-news');
-           const newsData = await newsRes.json();
-           
-           if (newsData.high_news_blocked || newsData.medium_news_blocked) {
-             console.log(`📰 NEWS BLOCK: Skipping ${symbol} — High: ${newsData.high_news_blocked}, Medium: ${newsData.medium_news_blocked}`);
-             continue; // Skip trade
-           }
-         } catch (e) {
-           console.error('❌ News API check failed:', e.message);
-         }
-       }
+            // 📰 CHECK NEWS FILTER
+            if (process.env.ENABLE_NEWS_FILTER !== 'false') {
+              try {
+                const newsRes = await fetch('https://uluka-backend-production.up.railway.app/api/test-news');
+                const newsData = await newsRes.json();
+                
+                if (newsData.high_news_blocked || newsData.medium_news_blocked) {
+                  console.log(`📰 NEWS BLOCK: Skipping ${symbol} — High: ${newsData.high_news_blocked}, Medium: ${newsData.medium_news_blocked}`);
+                  continue; // Skip trade
+                }
+              } catch (e) {
+                console.error('❌ News API check failed:', e.message);
+              }
+            }
 
             // 🧬 DNA BLOCKING
             const stratName = getDominantStrategy(signal);
@@ -338,12 +338,14 @@ async function runTick() {
               }
 
               const adjustedConfig = { ...config, riskPerTradePercent: currentRisk };
-                       // 📊 CHECK LIQUIDITY WALLS
-         const isSafe = await liquidity.checkLiquidity(bybit, symbol, signal.signalType === 1 ? 'BUY' : 'SELL', currentPrice);
-         if (!isSafe) {
-           console.log(`⏭️ Skipping ${symbol}: Large liquidity wall detected.`);
-           continue;
-         }
+              
+              // 📊 CHECK LIQUIDITY WALLS
+              const isSafe = await liquidity.checkLiquidity(bybit, symbol, signal.signalType === 1 ? 'BUY' : 'SELL', currentPrice);
+              if (!isSafe) {
+                console.log(`⏭️ Skipping ${symbol}: Large liquidity wall detected.`);
+                continue;
+              }
+              
               const plan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, adjustedConfig);
               
               if (plan) {
@@ -371,6 +373,7 @@ async function runTick() {
                   await closeTrade(user, idx, openPos, currentPrice, 'Hybrid Flip (Reversal)', bybit);
                   
                   const plan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, { ...config, riskPerTradePercent: user.risk_percent });
+                  
                   if (plan) {
                     const livePos = await execution.executeLiveTrade(bybit, plan, signal, { ...config, riskPerTradePercent: user.risk_percent }, user);
                     if (livePos) { 
@@ -384,18 +387,18 @@ async function runTick() {
                 }
               }
             }
-          }
-        }
+          } // closes if (signal.signalType !== 0)
+        } // closes for (const symbol of userSymbols)
         
         // 1-SECOND DELAY BETWEEN USERS
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-      } // 👈 THIS CLOSING BRACE FIXES THE CRASH
+      } // closes else (Guardian Angel)
     } catch (e) { 
       console.error(`❌ Error on ${user.account_id}:`, e.message); 
     }
-  }
-}
+  } // closes for (const user of users)
+} // closes runTick
 
 // 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL)
 async function manageOpenPositions(user, symbol, currentPrice, bybit) {
