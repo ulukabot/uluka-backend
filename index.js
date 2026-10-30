@@ -10,22 +10,20 @@ const execution = require('./lib/execution');
 const config = require('./config');
 
 // 🛡️ GLOBAL CRASH SHIELD
-// Prevents the bot from dying if an unhandled promise rejection occurs.
 process.on('unhandledRejection', (reason, promise) => {
   console.error('🚨 Unhandled Rejection:', reason.message || reason);
 });
 
 // 🧠 HELPER: IDENTIFY DOMINANT STRATEGY
-// Used for DNA tracking to know exactly which strategy triggered the trade.
 function getDominantStrategy(signal) {
-  if (signal.signalType === 1) { // BUY Signals
+  if (signal.signalType === 1) { 
     if (signal.obBuy) return 'OB'; 
     if (signal.fvgBuy) return 'FVG';
     if (signal.chochBuy) return 'CHoCH'; 
     if (signal.bosBuy) return 'BOS';
     if (signal.farsightBuy) return 'Farsight'; 
     if (signal.visionBuy) return 'Vision';
-  } else { // SELL Signals
+  } else { 
     if (signal.obSell) return 'OB'; 
     if (signal.fvgSell) return 'FVG';
     if (signal.chochSell) return 'CHoCH'; 
@@ -40,13 +38,12 @@ function getDominantStrategy(signal) {
 const now = () => new Date().toISOString().replace('T', ' ').substring(0, 19);
 
 // 📊 GLOBAL STATE TRACKERS
-const lastCandleTimes = {};       // Tracks the last processed candle time per user/symbol
-const openPositions = {};         // Tracks open positions in memory per user
-const consecutiveLosses = {};     // Tracks consecutive losses per user for the Loss Governor
-const symbolCooldowns = {};       // Tracks 30-min cooldowns after a loss per user/symbol
+const lastCandleTimes = {};       
+const openPositions = {};         
+const consecutiveLosses = {};     
+const symbolCooldowns = {};       
 
 // 📡 FETCH USERS FROM FOREX BACKEND
-// The bot loops through all active users in the SaaS database.
 async function fetchUsers() {
   try {
     const res = await fetch('https://uluka-backend-production.up.railway.app/api/crypto/active-users', {
@@ -59,12 +56,10 @@ async function fetchUsers() {
     }
 
     const data = await res.json();
-    
     if (!Array.isArray(data)) {
       console.error('❌ Backend returned an error instead of an array:', data);
       return [];
     }
-    
     return data;
   } catch (e) {
     console.error('❌ Failed to fetch users from backend:', e.message);
@@ -73,8 +68,6 @@ async function fetchUsers() {
 }
 
 // 🔄 SYNC OPEN TRADES ON STARTUP
-// If the bot restarts, this checks the database for OPEN trades, asks Bybit if they are closed,
-// and updates the database accordingly.
 async function syncOpenTrades() {
   if (!process.env.DATABASE_URL) return;
   const { Pool } = require('pg');
@@ -82,7 +75,6 @@ async function syncOpenTrades() {
   
   try {
     const res = await pool.query(`SELECT * FROM crypto_trades WHERE status = 'OPEN'`);
-    
     if (!res?.rows || res.rows.length === 0) return;
     
     console.log(`🔄 Syncing ${res.rows.length} OPEN trades with Bybit...`);
@@ -114,6 +106,22 @@ async function syncOpenTrades() {
           [closePrice, pnl, reason, trade.id]
         );
         console.log(`✅ Synced DB Trade #${trade.id} (${trade.symbol}) -> CLOSED with PnL $${pnl}`);
+
+        // 👈 SEND MISSING WEBHOOK FOR OFFLINE CLOSES
+        if (process.env.IS_MASTER === 'true') {
+          await tg.sendWebhook({ 
+            type: 'TRADE_CLOSE', 
+            source: 'MASTER', 
+            asset_class: 'CRYPTO', 
+            result: pnl >= 0 ? 'WIN' : 'LOSS', 
+            symbol: trade.symbol, 
+            direction: trade.side.toUpperCase(), 
+            profit: pnl.toFixed(2), 
+            reason: reason, 
+            ticket: trade.id, 
+            time: now() 
+          });
+        }
       }
     }
   } catch (err) {
@@ -158,9 +166,7 @@ async function runTick() {
       const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
       const equity = parseFloat(usdt?.equity || 0);
       
-      if (equity <= 0) {
-        continue;
-      }
+      if (equity <= 0) continue;
 
       // 🛡️ TIER CAP GUARD
       if (equity > user.tier_cap) {
@@ -185,7 +191,7 @@ async function runTick() {
         }).catch(() => {});
       }
 
-      const userSymbols = user.symbols.split(',');
+      const userSymbols = (user.symbols || 'BTCUSDT,ETHUSDT').split(',');
       
       if (!openPositions[user.account_id]) {
         openPositions[user.account_id] = [];
@@ -262,7 +268,6 @@ async function runTick() {
         if (signal.signalType !== 0) {
           const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
           
-          // 🛑 MQL5 RULE: REQUIRE AT LEAST 2 VOTES
           if (dominantVotes < 2) {
             continue;
           }
@@ -283,15 +288,15 @@ async function runTick() {
           const openPos = openPositions[user.account_id].find(p => p.symbol === symbol);
           
           if (!openPos) {
-            // 🛡️ LOSS GOVERNOR CHECK
+            // 🛡️ LOSS GOVERNOR CHECK (FIXED TYPO)
             if (consecutiveLosses[user.account_id] >= config.maxConsecutiveLosses) {
               console.log(`🛑 CAPITAL PROTECTION: ${user.account_id} halted due to consecutive losses.`);
               continue;
             }
             
             let currentRisk = user.risk_percent;
-            if (config.lossGovernor[consecutiveLosses[user.account_id]]) {
-              currentRisk *= config.lossGovernor[consecutiveLosses[user.account_id]];
+            if (config.consecutiveLossGovernor[consecutiveLosses[user.account_id]]) { // 👈 FIXED TYPO
+              currentRisk *= config.consecutiveLossGovernor[consecutiveLosses[user.account_id]];
               console.log(`⚠️ Loss Governor Active for ${user.account_id}: Reduced risk to ${currentRisk}%`);
             }
 
@@ -339,7 +344,7 @@ async function runTick() {
         }
       }
       
-      // 1-SECOND DELAY BETWEEN USERS TO PROTECT API LIMITS
+      // 1-SECOND DELAY BETWEEN USERS
       await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (e) { 
@@ -383,15 +388,10 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
           await tg.sendWebhook({ 
-            type: 'POSITION_UPDATE', 
-            source: 'MASTER', 
-            asset_class: 'CRYPTO', 
-            symbol: pos.symbol, 
-            direction: pos.side.toUpperCase(), 
-            new_sl: pos.tp1Price, 
-            be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', 
-            ticket: pos.dbId, 
-            time: now() 
+            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
+            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, 
+            entry: pos.entryPrice, open_pnl: '30% Closed', // 👈 ADDED MISSING FIELDS
+            be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId, time: now() 
           });
         } 
         continue;
@@ -415,15 +415,10 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
         
         if (user.is_master && process.env.IS_MASTER === 'true') {
           await tg.sendWebhook({ 
-            type: 'POSITION_UPDATE', 
-            source: 'MASTER', 
-            asset_class: 'CRYPTO', 
-            symbol: pos.symbol, 
-            direction: pos.side.toUpperCase(), 
-            new_sl: pos.entryPrice, 
-            be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', 
-            ticket: pos.dbId, 
-            time: now() 
+            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
+            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, 
+            entry: pos.entryPrice, open_pnl: '50% Closed', // 👈 ADDED MISSING FIELDS
+            be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId, time: now() 
           });
         } 
         continue;
@@ -445,7 +440,6 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
   
   await db.logTradeClose(pos.dbId, closePrice, pnl, reason);
 
-  // LOSS GOVERNOR UPDATE
   if (pnl >= 0) {
     consecutiveLosses[user.account_id] = 0;
   } else {
@@ -453,7 +447,6 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
     symbolCooldowns[`${user.account_id}-${pos.symbol}`] = Date.now() + (config.symbolCooldownMinutes * 60 * 1000);
   }
 
-  // DNA UPDATE
   if (pos.primaryStrategy && pos.regime) {
     await db.updateDNA(pos.symbol, 'strategy', pos.primaryStrategy, pnl >= 0, pnl);
     await db.updateDNA(pos.symbol, 'regime', pos.regime, pnl >= 0, pnl);
@@ -461,19 +454,11 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
 
   console.log(`\n[${now()}] 🔴 TRADE CLOSED: ${user.account_id} | ${pos.symbol} | PnL: $${pnl.toFixed(2)}`);
 
-  // WEBHOOK TO CHANNELS (No Private Alert)
   if (user.is_master && process.env.IS_MASTER === 'true') {
     await tg.sendWebhook({ 
-      type: 'TRADE_CLOSE', 
-      source: 'MASTER', 
-      asset_class: 'CRYPTO', 
-      result: pnl >= 0 ? 'WIN' : 'LOSS', 
-      symbol: pos.symbol, 
-      direction: pos.side.toUpperCase(), 
-      profit: pnl.toFixed(2), 
-      reason: reason, 
-      ticket: pos.dbId, 
-      time: now() 
+      type: 'TRADE_CLOSE', source: 'MASTER', asset_class: 'CRYPTO', 
+      result: pnl >= 0 ? 'WIN' : 'LOSS', symbol: pos.symbol, direction: pos.side.toUpperCase(), 
+      profit: pnl.toFixed(2), reason: reason, ticket: pos.dbId, time: now() 
     });
   }
   
@@ -484,12 +469,10 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
 async function startupTest() {
   console.log(`[VERSION 3.0] 🦉 Uluka Ultima - Crypto Engine Starting...`);
   
-  // Private Boot Notification
   if (process.env.TELEGRAM_BOT_TOKEN) {
     await tg.sendMessage('🦉 <b>System Check:</b> Uluka Ultima has booted up on Railway!').catch(() => {});
   }
 
-  // Sync open trades on startup
   await syncOpenTrades();
 }
 
@@ -498,7 +481,6 @@ async function mainLoop() {
   setTimeout(mainLoop, 15000); 
 }
 
-// EXECUTE
 startupTest().then(() => {
   mainLoop();
 });
