@@ -22,6 +22,8 @@ async function checkLiquidity(bybit, symbol, tradeSide, currentPrice) {
       if (parseFloat(a[0]) < currentPrice + range) askVol += parseFloat(a[1]);
     });
 
+    if (bidVol === 0 || askVol === 0) return true;
+
     const imbalance = bidVol / (bidVol + askVol); // 0.0 (all asks) to 1.0 (all bids)
 
     console.log(`📊 Liquidity ${symbol}: Imbalance ${(imbalance * 100).toFixed(1)}%`);
@@ -32,7 +34,8 @@ async function checkLiquidity(bybit, symbol, tradeSide, currentPrice) {
 
     return true; 
   } catch (e) {
-    return true; 
+    console.error('Liquidity Check Error:', e.message);
+    return true; // If error, allow trade
   }
 }
 
