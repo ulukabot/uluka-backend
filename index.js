@@ -5764,31 +5764,6 @@ app.get('/api/crypto/active-users', async (req, res) => {
     }
 });
 
-// ─── CRYPTO SAAS: Save User Settings (For Netlify Portal) ───
-app.post('/api/crypto/settings', async (req, res) => {
-    const { account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols } = req.body;
-    if (!account_id || !api_key || !api_secret) return res.status(400).json({ error: 'Missing fields' });
-
-    try {
-        await pool.query(`
-            INSERT INTO crypto_users (account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (account_id) DO UPDATE SET
-                api_key = EXCLUDED.api_key,
-                api_secret = EXCLUDED.api_secret,
-                risk_percent = EXCLUDED.risk_percent,
-                leverage = EXCLUDED.leverage,
-                max_positions = EXCLUDED.max_positions,
-                symbols = EXCLUDED.symbols,
-                updated_at = NOW()
-        `, [account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols]);
-        
-        res.json({ success: true, message: 'Settings saved' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // ─── CRYPTO SAAS: Fetch Active Users (For the Crypto Bot) ──────────
 app.get('/api/crypto/active-users', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) {
