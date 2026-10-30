@@ -182,6 +182,7 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
 
     const activeSl = pos.virtualSl || pos.slPrice;
 
+    // 🛑 1. CHECK TP3 (Full close)
     const hitTP3 = (pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price);
     if (hitTP3) {
       await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: pos.qty });
@@ -189,33 +190,64 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit) {
       continue;
     }
 
+    // 🛑 2. CHECK TP2 (Close 30%, move SL to TP1)
     const hitTP2 = (pos.side === 'Buy' && currentPrice >= pos.tp2Price) || (pos.side === 'Sell' && currentPrice <= pos.tp2Price);
     if (hitTP2 && !pos.tp2Hit) {
       pos.tp2Hit = true;
       const closeQty = parseFloat((pos.qty * 0.30).toFixed(4));
       await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: closeQty });
       await bybit.setTradingStop({ symbol: pos.symbol, stopLoss: pos.tp1Price });
+      
       pos.virtualSl = pos.tp1Price;
       pos.slPrice = pos.tp1Price;
       pos.qty -= closeQty;
+      
       console.log(`✂️ ${user.account_id} | TP2 HIT: ${pos.symbol}`);
+
+      if (user.is_master) {
+        await tg.sendMessage(`✂️ <b>ADMIN TP2 HIT (30%)</b>\n\n<b>Pair:</b> ${pos.symbol}\n<b>SL Moved to:</b> $${pos.tp1Price}`);
+        if (process.env.IS_MASTER === 'true') {
+          await tg.sendWebhook({
+            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO',
+            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price,
+            be_text: 'TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId,
+            time: new Date().toISOString().slice(0,16).replace('T',' ')
+          });
+        }
+      }
       continue;
     }
 
+    // 🛑 3. CHECK TP1 (Close 50%, move SL to Breakeven)
     const hitTP1 = (pos.side === 'Buy' && currentPrice >= pos.tp1Price) || (pos.side === 'Sell' && currentPrice <= pos.tp1Price);
     if (hitTP1 && !pos.tp1Hit) {
       pos.tp1Hit = true;
       const closeQty = parseFloat((pos.qty * 0.50).toFixed(4));
       await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: closeQty });
       await bybit.setTradingStop({ symbol: pos.symbol, stopLoss: pos.entryPrice });
+      
       pos.virtualSl = pos.entryPrice;
       pos.slPrice = pos.entryPrice;
       pos.breakEvenSet = true;
       pos.qty -= closeQty;
+      
       console.log(`✂️ ${user.account_id} | TP1 HIT: ${pos.symbol}`);
+
+      if (user.is_master) {
+        await tg.sendMessage(`✂️ <b>ADMIN TP1 HIT (50%)</b>\n\n<b>Pair:</b> ${pos.symbol}\n<b>SL Moved to:</b> $${pos.entryPrice}`);
+        if (process.env.IS_MASTER === 'true') {
+          await tg.sendWebhook({
+            type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO',
+            symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice,
+            be_text: 'TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId,
+            time: new Date().toISOString().slice(0,16).replace('T',' ')
+          });
+        }
+      }
       continue;
     }
 
+    // 🛑 4. CHECK STOP LOSS
     const hitSL = (pos.side === 'Buy' && currentPrice <= activeSl) || (pos.side === 'Sell' && currentPrice >= activeSl);
     if (hitSL) {
       await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: pos.qty });
