@@ -12,64 +12,74 @@ router.get('/statement', async (req, res) => {
   try {
     const { period = 'month', product = 'crypto', accountId, start, end } = req.query;
 
-    // 1. Determine the Table and Column Names
-    // Note: Change the forex column names on the right if your trade_log table uses different ones!
     const isForex = product === 'forex';
     const tableName = isForex ? 'trade_log' : 'crypto_trades';
     
-    const colSymbol = 'symbol';
-    const colPnl = isForex ? 'profit' : 'pnl_usd';       // ⚠️ Forex might use 'profit' or 'pnl'
-    const colOpen = isForex ? 'open_time' : 'opened_at'; // ⚠️ Forex might use 'open_time' or 'time'
-    const colClose = isForex ? 'close_time' : 'closed_at'; // ⚠️ Forex might use 'close_time' or 'time'
-    const colAccount = 'account_id';
-    const colMaster = 'is_master';
-
-    // 2. Build the Date Filter
+    // 1. Build the Date Filter (using different column names)
     let dateFilter = '';
     let queryParams = [];
     let paramIndex = 1;
+    const timeCol = isForex ? 'time' : 'opened_at';
 
     if (period === 'week') {
-      dateFilter = `AND ${colOpen} >= DATE_TRUNC('week', NOW())`;
+      dateFilter = `AND ${timeCol} >= DATE_TRUNC('week', NOW())`;
     } else if (period === 'month') {
-      dateFilter = `AND ${colOpen} >= DATE_TRUNC('month', NOW())`;
+      dateFilter = `AND ${timeCol} >= DATE_TRUNC('month', NOW())`;
     } else if (period === 'year') {
-      dateFilter = `AND ${colOpen} >= DATE_TRUNC('year', NOW())`;
+      dateFilter = `AND ${timeCol} >= DATE_TRUNC('year', NOW())`;
     } else if (period === 'custom' && start && end) {
-      dateFilter = `AND ${colOpen} >= $${paramIndex}::timestamp AND ${colOpen} <= $${paramIndex + 1}::timestamp`;
+      dateFilter = `AND ${timeCol} >= $${paramIndex}::timestamp AND ${timeCol} <= $${paramIndex + 1}::timestamp`;
       queryParams.push(start, end + ' 23:59:59');
       paramIndex += 2;
     }
 
-    // 3. Build the Account Filter
+    // 2. Build the Account Filter
     let accountFilter = '';
     if (accountId) {
-      accountFilter = `AND ${colAccount} = $${paramIndex}`;
+      accountFilter = `AND account_id = $${paramIndex}`;
       queryParams.push(accountId);
       paramIndex++;
-    } else {
-      // Some forex tables might not have an 'is_master' column. If it crashes, remove this line.
-      accountFilter = `AND ${colMaster} = TRUE`;
+    } else if (!isForex) {
+      // Only apply is_master filter for Crypto (Forex table doesn't have it)
+      accountFilter = `AND is_master = TRUE`;
     }
 
-    // 4. Fetch Trades (Aliasing columns to standard names so the rest of the code works)
-    const query = `
-      SELECT 
-        ${colSymbol} as symbol, 
-        ${colPnl} as pnl_usd, 
-        ${colOpen} as opened_at, 
-        ${colClose} as closed_at
-      FROM ${tableName}
-      WHERE status = 'CLOSED'
-      ${dateFilter}
-      ${accountFilter}
-      ORDER BY ${colClose} ASC
-    `;
+    // 3. Build Status Filter
+    // Forex table doesn't have a 'status' column, so we skip it for Forex
+    const statusFilter = isForex ? '' : "WHERE status = 'CLOSED'";
+
+    // 4. Fetch Trades (Aliasing Forex columns to match Crypto names for the JS logic)
+    let query = '';
+    
+    if (isForex) {
+      query = `
+        SELECT 
+          symbol, 
+          pnl as pnl_usd, 
+          time as opened_at, 
+          time as closed_at
+        FROM ${tableName}
+        ${statusFilter}
+        WHERE 1=1
+        ${dateFilter}
+        ${accountFilter}
+        ORDER BY time ASC
+      `;
+    } else {
+      query = `
+        SELECT symbol, pnl_usd, opened_at, closed_at
+        FROM ${tableName}
+        ${statusFilter}
+        ${dateFilter}
+        ${accountFilter}
+        ORDER BY closed_at ASC
+      `;
+    }
 
     const result = await pool.query(query, queryParams);
     const trades = result.rows;
 
-    // 5. Calculate Summary & Symbol Breakdown
+    // 5. Calculate Summary & Symbol Breakdown (This part stays the same)
     let totalProfit = 0;
     let wins = 0;
     let losses = 0;
