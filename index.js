@@ -1,4 +1,9 @@
 // index.js
+
+process.on('unhandledRejection', (err) => {
+  console.error('🚨 CRYPTO BOT CRASH:', err.message);
+});
+
 require('dotenv').config();
 const BybitClient = require('./lib/bybit');
 const ind = require('./lib/indicators');
@@ -557,3 +562,8 @@ async function mainLoop() {
 startupTest().then(() => {
   mainLoop();
 });
+
+// Add this at the bottom of the file
+setInterval(() => {
+  console.log(`💓 [HEARTBEAT] ${new Date().toISOString()} - Crypto bot is alive and monitoring market.`);
+}, 1000 * 60 * 15); // Logs every 15 minutes
