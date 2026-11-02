@@ -219,7 +219,11 @@ async function runTick() {
           }).catch(() => {});
         }
 
-        const userSymbols = (user.symbols || 'BTCUSDT,ETHUSDT').split(',');
+        const userSymbols = (user.symbols || 'BTCUSDT,ETHUSDT')
+  .split(',')
+  .map(s => s.trim().toUpperCase())
+  .filter(s => /USDT$/.test(s));
+if (userSymbols.length === 0) userSymbols.push('BTCUSDT', 'ETHUSDT');
         
         if (!openPositions[user.account_id]) {
           openPositions[user.account_id] = [];
