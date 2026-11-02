@@ -57,6 +57,7 @@ module.exports = {
   // ─── Safety ───
   floatingDdLimitPercent: 3.0,
   dailyLossLimitPercent: 5.0,
+  maxConsecutiveLosses: 4,
   symbolCooldownMinutes: 30,
   hardBlockCooldownMinutes: 60,
   hardBlockCooldownMultiplier: 2,
