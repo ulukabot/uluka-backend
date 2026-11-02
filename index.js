@@ -9,6 +9,13 @@ const reportsRoute = require('./reports');
 const { Pool } = require('pg');
 const app = express();
 
+process.on('uncaughtException', (err) => {
+  console.error('🚨 UNCAUGHT EXCEPTION:', err.message);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 UNHANDLED REJECTION:', reason);
+});
+
 app.use(cors()); // <-- ADDED THIS LINE
 app.use(express.json());
 app.use('/api/reports', reportsRoute);
@@ -1112,9 +1119,11 @@ async function sendAdminAlert(msg) {
 
 // ─── SHARED VALIDATION LOGIC (GAS-identical) ─────────────
 async function handleValidation(params) {
-    console.log('🔥 handleValidation called for account:', params.account);
-    const { key, account, instance, balance, broker, hwid, personal_chat_id } = params;
-    const licence = await pool.query(
+    try { // <-- ADD THIS
+        console.log('🔥 handleValidation called for account:', params.account);
+        const { key, account, instance, balance, broker, hwid, personal_chat_id } = params;
+        
+        const licence = await pool.query(
         'SELECT * FROM licences WHERE licence_key = $1 AND status = $2',
         [key, 'ACTIVE']
     );
@@ -1187,7 +1196,13 @@ async function handleValidation(params) {
     const m = String(new Date(lic.expires_on).getMonth() + 1).padStart(2, '0');
     const y = new Date(lic.expires_on).getFullYear();
     return { status: 200, body: `AUTHORIZED|${d}-${m}-${y}|${lic.client_name}|${lic.equity_cap || 0}|${lic.subscription || 'PRO'}` };
+        
+    } catch (err) { // <-- ADD THIS
+        console.error('❌ Validation crashed:', err.message);
+        return { status: 500, body: 'INTERNAL_ERROR' };
+    }
 }
+
 // ─── SHARED HOOT FORMATTER ────────────────────────────────
 function buildHootMessages(d) {
     const lotDisplay = d.lot !== undefined ? d.lot : 'N/A';
