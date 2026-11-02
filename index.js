@@ -1,9 +1,5 @@
 // index.js
 
-process.on('unhandledRejection', (err) => {
-  console.error('🚨 CRYPTO BOT CRASH:', err.message);
-});
-
 require('dotenv').config();
 const BybitClient = require('./lib/bybit');
 const ind = require('./lib/indicators');
@@ -264,9 +260,12 @@ async function runTick() {
           continue; 
         }
         
-        if (!ticker || !ticker.lastPrice) continue;
+                if (!ticker || !ticker.lastPrice) continue;
         
         const currentPrice = parseFloat(ticker.lastPrice);
+
+        // 🔍 ADD THIS LOG
+        console.log(`🔍 [${now()}] Scanning ${symbol} for ${user.account_id} | Price: $${currentPrice}`);
 
         // 🔑 TRADE MANAGEMENT RUNS FIRST — ALWAYS — EVEN WHEN ddLocked
         await manageOpenPositions(user, symbol, currentPrice, bybit);
