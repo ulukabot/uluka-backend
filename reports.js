@@ -125,10 +125,9 @@ router.get('/statement', async (req, res) => {
       }
     });
 
-    } catch (err) {
-    console.error('❌ Report Error:', err);
-    // Temporarily sending the real error to the browser for debugging
-    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+     } catch (err) {
+    console.error('❌ Report Error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to generate report' });
   }
 });
 
