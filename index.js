@@ -563,7 +563,7 @@ startupTest().then(() => {
   mainLoop();
 });
 
-// Add this at the bottom of the file
+// 3. Heartbeat (Every 5 minutes to keep Railway awake)
 setInterval(() => {
   console.log(`💓 [HEARTBEAT] ${new Date().toISOString()} - Crypto bot is alive and monitoring market.`);
-}, 1000 * 60 * 15); // Logs every 15 minutes
+}, 1000 * 60 * 5); 
