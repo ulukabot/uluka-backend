@@ -39,10 +39,9 @@ router.get('/statement', async (req, res) => {
       queryParams.push(accountId);
       paramIndex++;
     } else if (isForex) {
-      // ✅ FIX: For Forex, only look at MASTER trades on the public dashboard
+      // ✅ Only look at MASTER trades for the public dashboard
       accountFilter = `AND source = 'MASTER'`; 
     } else {
-      // For Crypto, use is_master
       accountFilter = `AND is_master = TRUE`;
     }
 
@@ -50,8 +49,9 @@ router.get('/statement', async (req, res) => {
 
     let query = '';
     if (isForex) {
+      // ✅ FETCH balance column to calculate true starting equity
       query = `
-        SELECT symbol, pnl as pnl_usd, ${timeColCast} as opened_at, ${timeColCast} as closed_at
+        SELECT symbol, pnl as pnl_usd, balance, ${timeColCast} as opened_at, ${timeColCast} as closed_at
         FROM ${tableName}
         WHERE 1=1
         ${dateFilter}
@@ -75,9 +75,16 @@ router.get('/statement', async (req, res) => {
     let totalProfit = 0, wins = 0, losses = 0;
     const symbols = {};
     
-    // ✅ FIX: Start equity at 1 to prevent division by zero, and track drawdown properly
-    let currentEquity = 1000; // Dummy starting balance for percentage calculation
-    let peakEquity = 1000;
+    // ✅ CALCULATE TRUE STARTING BALANCE
+    let startEquity = 1000; // Fallback if no trades or missing balance
+    if (trades.length > 0 && trades[0].balance !== undefined && trades[0].balance !== null) {
+        // First trade balance minus its PnL = Starting Balance
+        startEquity = parseFloat(trades[0].balance) - parseFloat(trades[0].pnl_usd);
+        if (startEquity <= 0) startEquity = 1000; // Safety net for edge cases
+    }
+
+    let currentEquity = startEquity; 
+    let peakEquity = startEquity;
     let maxDrawdown = 0;
 
     trades.forEach(trade => {
@@ -106,7 +113,7 @@ router.get('/statement', async (req, res) => {
     const totalTrades = trades.length;
     const accuracy = totalTrades > 0 ? ((wins / (wins + losses || 1)) * 100).toFixed(1) : 0;
     
-    // Calculate percent based on peak
+    // ✅ Now peakEquity is accurate (e.g. 10,000), so drawdown percentage is accurate
     const maxDdPercent = peakEquity > 0 ? Math.min(100, ((maxDrawdown / peakEquity) * 100)).toFixed(2) : "0.00";
 
     const symbolArray = Object.values(symbols).map(s => ({
