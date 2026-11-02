@@ -4,9 +4,11 @@
 // ============================================================
 
 const express = require('express');
+const reportsRoute = require('./reports');
 const { Pool } = require('pg');
 const app = express();
 app.use(express.json());
+app.use('/api/reports', reportsRoute);
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
 
 console.log('🚀 VERSION 2.5 WITH ALL FEATURES - DEPLOYED AT ' + new Date().toISOString());
