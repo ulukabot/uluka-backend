@@ -264,9 +264,6 @@ async function runTick() {
         
         const currentPrice = parseFloat(ticker.lastPrice);
 
-        // 🔍 ADD THIS LOG
-        console.log(`🔍 [${now()}] Scanning ${symbol} for ${user.account_id} | Price: $${currentPrice}`);
-
         // 🔑 TRADE MANAGEMENT RUNS FIRST — ALWAYS — EVEN WHEN ddLocked
         await manageOpenPositions(user, symbol, currentPrice, bybit);
 
