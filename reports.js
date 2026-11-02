@@ -12,46 +12,58 @@ router.get('/statement', async (req, res) => {
   try {
     const { period = 'month', product = 'crypto', accountId, start, end } = req.query;
 
-    // 1. Determine the Table
-    const tableName = product === 'forex' ? 'trade_log' : 'crypto_trades';
+    // 1. Determine the Table and Column Names
+    // Note: Change the forex column names on the right if your trade_log table uses different ones!
+    const isForex = product === 'forex';
+    const tableName = isForex ? 'trade_log' : 'crypto_trades';
     
+    const colSymbol = 'symbol';
+    const colPnl = isForex ? 'profit' : 'pnl_usd';       // ⚠️ Forex might use 'profit' or 'pnl'
+    const colOpen = isForex ? 'open_time' : 'opened_at'; // ⚠️ Forex might use 'open_time' or 'time'
+    const colClose = isForex ? 'close_time' : 'closed_at'; // ⚠️ Forex might use 'close_time' or 'time'
+    const colAccount = 'account_id';
+    const colMaster = 'is_master';
+
     // 2. Build the Date Filter
     let dateFilter = '';
     let queryParams = [];
     let paramIndex = 1;
 
     if (period === 'week') {
-      dateFilter = `AND opened_at >= DATE_TRUNC('week', NOW())`;
+      dateFilter = `AND ${colOpen} >= DATE_TRUNC('week', NOW())`;
     } else if (period === 'month') {
-      dateFilter = `AND opened_at >= DATE_TRUNC('month', NOW())`;
+      dateFilter = `AND ${colOpen} >= DATE_TRUNC('month', NOW())`;
     } else if (period === 'year') {
-      dateFilter = `AND opened_at >= DATE_TRUNC('year', NOW())`;
+      dateFilter = `AND ${colOpen} >= DATE_TRUNC('year', NOW())`;
     } else if (period === 'custom' && start && end) {
-      dateFilter = `AND opened_at >= $${paramIndex}::timestamp AND opened_at <= $${paramIndex + 1}::timestamp`;
+      dateFilter = `AND ${colOpen} >= $${paramIndex}::timestamp AND ${colOpen} <= $${paramIndex + 1}::timestamp`;
       queryParams.push(start, end + ' 23:59:59');
       paramIndex += 2;
     }
 
     // 3. Build the Account Filter
-    // If accountId is provided (Client Dashboard), filter by it.
-    // If not (Public Dashboard), filter STRICTLY by is_master = TRUE.
     let accountFilter = '';
     if (accountId) {
-      accountFilter = `AND account_id = $${paramIndex}`;
+      accountFilter = `AND ${colAccount} = $${paramIndex}`;
       queryParams.push(accountId);
       paramIndex++;
     } else {
-      accountFilter = `AND is_master = TRUE`;
+      // Some forex tables might not have an 'is_master' column. If it crashes, remove this line.
+      accountFilter = `AND ${colMaster} = TRUE`;
     }
 
-    // 4. Fetch Trades
+    // 4. Fetch Trades (Aliasing columns to standard names so the rest of the code works)
     const query = `
-      SELECT symbol, side, qty, entry_price, close_price, pnl_usd, opened_at, closed_at
+      SELECT 
+        ${colSymbol} as symbol, 
+        ${colPnl} as pnl_usd, 
+        ${colOpen} as opened_at, 
+        ${colClose} as closed_at
       FROM ${tableName}
       WHERE status = 'CLOSED'
       ${dateFilter}
       ${accountFilter}
-      ORDER BY closed_at ASC
+      ORDER BY ${colClose} ASC
     `;
 
     const result = await pool.query(query, queryParams);
@@ -125,7 +137,7 @@ router.get('/statement', async (req, res) => {
       }
     });
 
-     } catch (err) {
+  } catch (err) {
     console.error('❌ Report Error:', err.message);
     res.status(500).json({ success: false, error: 'Failed to generate report' });
   }
