@@ -4,9 +4,12 @@
 // ============================================================
 
 const express = require('express');
+const cors = require('cors'); // <-- ADDED THIS LINE
 const reportsRoute = require('./reports');
 const { Pool } = require('pg');
 const app = express();
+
+app.use(cors()); // <-- ADDED THIS LINE
 app.use(express.json());
 app.use('/api/reports', reportsRoute);
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
