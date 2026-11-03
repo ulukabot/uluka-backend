@@ -1114,7 +1114,8 @@ async function sendToTelegram(chatId, text, keyboard) {
 }
 
 async function sendAdminAlert(msg) {
-    if (ADMIN_CHAT_ID) await sendToTelegram(ADMIN_CHAT_ID, '🦉 ' + msg);
+    if (!ADMIN_CHAT_ID) return false;
+    return await sendToTelegram(ADMIN_CHAT_ID, '🦉 ' + msg);
 }
 
 // ─── SHARED VALIDATION LOGIC (GAS-identical) ─────────────
