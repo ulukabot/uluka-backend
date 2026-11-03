@@ -5870,6 +5870,165 @@ app.get('/admin/export-trades.csv', async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════
+// CRYPTO SAAS: SECURE API ROUTES (Step 2)
+// ═══════════════════════════════════════════════════════════
+
+const crypto = require('crypto');
+
+// Encryption Setup (AES-256-GCM)
+const ENCRYPTION_KEY = process.env.CRYPTO_SECRET || 'uluka-fallback-secret-key-32b!'; // Must be 32 bytes
+const IV_LENGTH = 12;
+
+function encryptKey(text) {
+    if (!text) return null;
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const authTag = cipher.getAuthTag().toString('hex');
+    return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+function decryptKey(text) {
+    if (!text) return null;
+    try {
+        const parts = text.split(':');
+        const iv = Buffer.from(parts[0], 'hex');
+        const authTag = Buffer.from(parts[1], 'hex');
+        const encryptedText = parts[2];
+        const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+        decipher.setAuthTag(authTag);
+        let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (e) {
+        console.error('Decryption failed:', e.message);
+        return null;
+    }
+}
+
+// 1. REGISTER NEW CRYPTO CLIENT
+app.post('/api/crypto/register', async (req, res) => {
+    const { account_id, client_name, licence_key, telegram_id, api_key, api_secret, risk_percent, max_drawdown } = req.body;
+    
+    if (!account_id || !licence_key || !api_key || !api_secret) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        const lic = await pool.query('SELECT * FROM crypto_users WHERE licence_key = $1', [licence_key]);
+        if (lic.rows.length > 0 && lic.rows[0].account_id !== account_id) {
+            return res.status(403).json({ error: 'Licence already bound to another account' });
+        }
+
+        const encApiKey = encryptKey(api_key);
+        const encApiSecret = encryptKey(api_secret);
+
+        await pool.query(`
+            INSERT INTO crypto_users (account_id, client_name, licence_key, telegram_id, api_key, api_secret, risk_percent, max_drawdown, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE')
+            ON CONFLICT (account_id) DO UPDATE SET
+                api_key = EXCLUDED.api_key,
+                api_secret = EXCLUDED.api_secret,
+                risk_percent = EXCLUDED.risk_percent,
+                max_drawdown = EXCLUDED.max_drawdown,
+                licence_key = EXCLUDED.licence_key,
+                telegram_id = EXCLUDED.telegram_id
+        `, [account_id, client_name || 'Crypto Client', licence_key, telegram_id, encApiKey, encApiSecret, risk_percent || 1.0, max_drawdown || 10.0]);
+
+        res.json({ success: true, message: 'Client registered securely.' });
+    } catch (err) {
+        console.error('🔥 Crypto register error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 2. VALIDATE LICENCE (Called by Crypto Bot before trading)
+app.post('/api/crypto/validate', async (req, res) => {
+    const { account_id, licence_key } = req.body;
+    
+    try {
+        const result = await pool.query(
+            'SELECT status, expiry_date, api_key, api_secret FROM crypto_users WHERE account_id = $1 AND licence_key = $2',
+            [account_id, licence_key]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(401).json({ valid: false, reason: 'INVALID_CREDENTIALS' });
+        }
+
+        const user = result.rows[0];
+        const today = new Date();
+
+        if (user.status !== 'ACTIVE') {
+            return res.status(403).json({ valid: false, reason: 'LICENCE_INACTIVE' });
+        }
+
+        if (user.expiry_date && new Date(user.expiry_date) < today) {
+            await pool.query("UPDATE crypto_users SET status = 'EXPIRED' WHERE account_id = $1", [account_id]);
+            return res.status(403).json({ valid: false, reason: 'LICENCE_EXPIRED' });
+        }
+
+        res.json({
+            valid: true,
+            api_key: decryptKey(user.api_key),
+            api_secret: decryptKey(user.api_secret)
+        });
+
+    } catch (err) {
+        console.error('🔥 Crypto validate error:', err.message);
+        res.status(500).json({ valid: false, reason: 'SERVER_ERROR' });
+    }
+});
+
+// 3. GET CLIENT STATS (For the Client Dashboard)
+app.get('/api/crypto/stats/:account_id', async (req, res) => {
+    const account_id = req.params.account_id;
+    
+    try {
+        const userRes = await pool.query(
+            'SELECT current_balance, payee_25, status, expiry_date FROM crypto_users WHERE account_id = $1',
+            [account_id]
+        );
+        
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Account not found' });
+        }
+        
+        const user = userRes.rows[0];
+
+        const tradeRes = await pool.query(`
+            SELECT 
+                COUNT(*) AS total_trades,
+                COUNT(*) FILTER (WHERE pnl_usd > 0) AS wins,
+                COUNT(*) FILTER (WHERE pnl_usd < 0) AS losses,
+                COALESCE(SUM(pnl_usd), 0) AS total_pnl
+            FROM crypto_client_trades 
+            WHERE account_id = $1 AND status = 'CLOSED'
+        `, [account_id]);
+
+        const stats = tradeRes.rows[0];
+        const winRate = stats.total_trades > 0 ? ((stats.wins / stats.total_trades) * 100).toFixed(1) : "0.0";
+
+        res.json({
+            current_balance: parseFloat(user.current_balance || 0),
+            payee_owed: parseFloat(user.payee_25 || 0),
+            status: user.status,
+            expiry_date: user.expiry_date,
+            total_trades: parseInt(stats.total_trades || 0),
+            wins: parseInt(stats.wins || 0),
+            losses: parseInt(stats.losses || 0),
+            win_rate: winRate,
+            total_pnl: parseFloat(stats.total_pnl || 0)
+        });
+
+    } catch (err) {
+        console.error('🔥 Crypto stats error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── CRYPTO SAAS: Fetch Active Users (For the Crypto Bot) ──────────
 app.get('/api/crypto/active-users', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) {
@@ -5883,32 +6042,7 @@ app.get('/api/crypto/active-users', async (req, res) => {
     }
 });
 
-// ─── CRYPTO SAAS: Save User Settings (For Netlify Portal) ───
-app.post('/api/crypto/settings', async (req, res) => {
-    const { account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols } = req.body;
-    if (!account_id || !api_key || !api_secret) return res.status(400).json({ error: 'Missing fields' });
-
-    try {
-        await pool.query(`
-            INSERT INTO crypto_users (account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (account_id) DO UPDATE SET
-                api_key = EXCLUDED.api_key,
-                api_secret = EXCLUDED.api_secret,
-                risk_percent = EXCLUDED.risk_percent,
-                leverage = EXCLUDED.leverage,
-                max_positions = EXCLUDED.max_positions,
-                symbols = EXCLUDED.symbols,
-                updated_at = NOW()
-        `, [account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols]);
-        
-        res.json({ success: true, message: 'Settings saved' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ─── CRYPTO SAAS: Update Peak Equity ───
+// ─── CRYPTO SAAS: Update Peak Equity (For Risk Management) ───
 app.post('/api/crypto/update-equity', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
     const { account_id, peak, daily_start } = req.body;
@@ -5917,37 +6051,6 @@ app.post('/api/crypto/update-equity', async (req, res) => {
             UPDATE crypto_users SET peak_equity = $1, daily_start_equity = $2 WHERE account_id = $3
         `, [peak, daily_start, account_id]);
         res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ─── CRYPTO SAAS: Fetch Active Users ───
-app.get('/api/crypto/active-users', async (req, res) => {
-    if (req.headers['x-admin-secret'] !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-    try {
-        const result = await pool.query(`SELECT * FROM crypto_users WHERE status = 'ACTIVE'`);
-        res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ─── CRYPTO SAAS: Save User Settings ───
-app.post('/api/crypto/settings', async (req, res) => {
-    const { account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols } = req.body;
-    if (!account_id || !api_key || !api_secret) return res.status(400).json({ error: 'Missing fields' });
-    try {
-        await pool.query(`
-            INSERT INTO crypto_users (account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (account_id) DO UPDATE SET
-                api_key = EXCLUDED.api_key, api_secret = EXCLUDED.api_secret,
-                risk_percent = EXCLUDED.risk_percent, leverage = EXCLUDED.leverage,
-                max_positions = EXCLUDED.max_positions, symbols = EXCLUDED.symbols,
-                updated_at = NOW()
-        `, [account_id, api_key, api_secret, risk_percent, leverage, max_positions, symbols]);
-        res.json({ success: true, message: 'Settings saved' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
