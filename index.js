@@ -348,9 +348,17 @@ console.log(`✅ [SIGNAL CONFIRMED] ${symbol} | Confidence: ${confidence}% (${ra
           }
         }
 
+                // 🔥 FIX: Check the database to ensure we don't have an open trade
+        const dbCheck = await pool.query(
+            `SELECT id FROM crypto_trades WHERE account_id = $1 AND symbol = $2 AND status = 'OPEN' LIMIT 1`,
+            [user.account_id, symbol]
+        );
+        const hasOpenDbTrade = dbCheck.rows.length > 0;
+
         const openPos = openPositions[user.account_id].find(p => p.symbol === symbol);
         
-        if (!openPos) {
+        // If either memory or the database has an open trade, skip opening a new one
+        if (!openPos && !hasOpenDbTrade) {
           if (consecutiveLosses[user.account_id] >= config.maxConsecutiveLosses) {
             console.log(`🛑 CAPITAL PROTECTION: ${user.account_id} halted due to consecutive losses.`);
             continue;
