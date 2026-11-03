@@ -298,9 +298,13 @@ if (signal.signalType === 0) {
     continue; 
 }
 
-const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
-if (dominantVotes < 2) {
-    console.log(`⏭️ [SKIP] ${symbol} | 1 vote | required 2 | skipping trade`);
+// Use the raw score (max 17)
+const dominantVotes = signal.signalType === 1 ? signal.buyScore : signal.sellScore;
+
+// Require a minimum score of 8 out of 17 to enter a trade (a strong setup)
+// You can change 8 to 2 if you want it to trade more aggressively
+if (dominantVotes < 8) {
+    console.log(`⏭️ [SKIP] ${symbol} | Score: ${dominantVotes}/17 | required 8 | skipping trade`);
     continue;
 }
         // 📰 CHECK NEWS FILTER
