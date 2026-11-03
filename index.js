@@ -293,10 +293,20 @@ async function runTick() {
         const { closes } = ind.parseKlines(klines);
         const signal = strat.getScoreSignal(symbol, klines, tickSize, currentPrice, ind.calculateEMA(closes, 10), ind.calculateEMA(closes, 45));
 
-        if (signal.signalType === 0) continue;
+        const signal = strat.getScoreSignal(symbol, klines, tickSize, currentPrice, ind.calculateEMA(closes, 10), ind.calculateEMA(closes, 45));
+        
+// 🔍 DEBUG LOGS
+console.log(`📊 [SIGNAL] ${symbol} | Type: ${signal.signalType} | BuyScore: ${signal.buyScore} | SellScore: ${signal.sellScore}`);
 
-        const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
-        if (dominantVotes < 2) continue;
+if (signal.signalType === 0) {
+    continue; 
+}
+
+const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
+if (dominantVotes < 2) {
+    console.log(`⏭️ [SKIP] ${symbol} | 1 vote | required 2 | skipping trade`);
+    continue;
+}
 
         // 📰 CHECK NEWS FILTER
         if (process.env.ENABLE_NEWS_FILTER !== 'false') {
