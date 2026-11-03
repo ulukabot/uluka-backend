@@ -1,6 +1,15 @@
 // index.js
 
 require('dotenv').config();
+
+// 🔥 ADD THESE TWO LINES TO FIX THE 'pool is not defined' ERROR
+const { Pool } = require('pg');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+// 🔥 END
+
 const BybitClient = require('./lib/bybit');
 const ind = require('./lib/indicators');
 const strat = require('./lib/strategies');
