@@ -8,6 +8,8 @@ const cors = require('cors'); // <-- ADDED THIS LINE
 const reportsRoute = require('./reports');
 const { Pool } = require('pg');
 const app = express();
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 process.on('uncaughtException', (err) => {
   console.error('🚨 UNCAUGHT EXCEPTION:', err.message);
@@ -17,7 +19,6 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 app.use(cors()); // <-- ADDED THIS LINE
-app.use(express.json());
 app.use('/api/reports', reportsRoute);
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
 
@@ -5952,6 +5953,19 @@ app.post('/api/crypto/settings', async (req, res) => {
     }
 });
 
+// Health check to verify server is alive
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'ok', message: 'Backend is alive' });
+});
+
+// Catch-all error handler to prevent 502s from crashing the server
+app.use((err, req, res, next) => {
+    console.error("🚨 Backend Error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+});
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log('Uluka Backend running on port ' + PORT));
+app.listen(PORT, "0.0.0.0", () => {
+    console.log('Uluka Backend running on port ' + PORT);
+});
