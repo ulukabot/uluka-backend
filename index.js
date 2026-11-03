@@ -309,8 +309,8 @@ if (signal.signalType === 0) {
 // 1. Get the raw score based on the direction
 const rawScore = signal.signalType === 1 ? signal.buyScore : signal.sellScore;
 
-// 2. Convert it to a percentage (Just like Uluka Ultra's confidence logic)
-const confidence = Math.round((rawScore / 17) * 100);
+// Cap the confidence at 100% so it doesn't show 200% on stacked signals
+const confidence = Math.min(100, Math.round((rawScore / 17) * 100));
 
 // 3. Require a minimum confidence of 60% to trade (You can change this number)
 const MIN_CONFIDENCE = 60;
