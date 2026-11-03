@@ -4843,7 +4843,7 @@ app.all('/cron/weekly-lead-report', async (req, res) => {
             { role: 'system', content: 'You are a growth hacker. Output text only.' },
             { role: 'user', content: prompt }
           ],
-          max_tokens: 500,
+          max_tokens: 800,
           temperature: 0.7
         })
       });
