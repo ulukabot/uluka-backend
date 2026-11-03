@@ -439,7 +439,7 @@ console.log(`✅ [SIGNAL CONFIRMED] ${symbol} | Confidence: ${confidence}% (${ra
   } // closes for (const user of users)
 } // closes runTick
 
-// 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL)
+// 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL) - FIXED
 async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 0.001, minOrderQty = 0.001) {
   if (!openPositions[user.account_id]) return;
   const positions = openPositions[user.account_id];
@@ -449,10 +449,15 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
     if (pos.symbol !== symbol) continue;
     
     const activeSl = pos.virtualSl || pos.slPrice;
+    // ✅ FIX: The close side MUST be the opposite of the position side
+    const closeSide = pos.side.toUpperCase() === 'BUY' ? 'Sell' : 'Buy';
 
     // 🛑 1. CHECK TP3 (Full close)
     if ((pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price)) {
-      await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: pos.qty });
+      await bybit.placeOrder({ 
+        category: 'linear', symbol: pos.symbol, side: closeSide, 
+        orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 
+      });
       await closeTrade(user, i, pos, pos.tp3Price, 'TP3 Hit (Full Close)', bybit); 
       continue;
     }
@@ -462,7 +467,7 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
       if (!pos.tp2Hit) {
         pos.tp2Hit = true;
         
-        // 🔥 FIX: Format partial qty to match Bybit step size
+        // Format partial qty to match Bybit step size
         let rawQty = pos.qty * 0.30;
         let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
         closeQty = parseFloat(closeQty.toFixed(4));
@@ -471,10 +476,14 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
           closeQty = pos.qty; // Too small to split, close entire position
         }
 
-        await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: closeQty });
+        await bybit.placeOrder({ 
+          category: 'linear', symbol: pos.symbol, side: closeSide, 
+          orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 
+        });
         
         if (closeQty < pos.qty) {
-            await bybit.setTradingStop({ symbol: pos.symbol, stopLoss: pos.tp1Price });
+            // ✅ FIX: Use positionIdx: 0 for setting SL
+            await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.tp1Price, positionIdx: 0 });
             pos.virtualSl = pos.tp1Price; 
             pos.slPrice = pos.tp1Price; 
             pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
@@ -499,7 +508,7 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
       if (!pos.tp1Hit) {
         pos.tp1Hit = true;
         
-        // 🔥 FIX: Format partial qty to match Bybit step size
+        // Format partial qty to match Bybit step size
         let rawQty = pos.qty * 0.50;
         let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
         closeQty = parseFloat(closeQty.toFixed(4));
@@ -508,10 +517,14 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
           closeQty = pos.qty;
         }
 
-        await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: closeQty });
+        await bybit.placeOrder({ 
+          category: 'linear', symbol: pos.symbol, side: closeSide, 
+          orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 
+        });
         
         if (closeQty < pos.qty) {
-            await bybit.setTradingStop({ symbol: pos.symbol, stopLoss: pos.entryPrice });
+            // ✅ FIX: Use positionIdx: 0 for setting SL
+            await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.entryPrice, positionIdx: 0 });
             pos.virtualSl = pos.entryPrice; 
             pos.slPrice = pos.entryPrice; 
             pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
@@ -533,7 +546,10 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
 
     // 🛑 4. CHECK STOP LOSS
     if ((pos.side === 'Buy' && currentPrice <= activeSl) || (pos.side === 'Sell' && currentPrice >= activeSl)) {
-      await bybit.closePosition({ symbol: pos.symbol, positionSide: pos.side, qty: pos.qty });
+      await bybit.placeOrder({ 
+        category: 'linear', symbol: pos.symbol, side: closeSide, 
+        orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 
+      });
       await closeTrade(user, i, pos, activeSl, 'SL Hit', bybit); 
       continue;
     }
