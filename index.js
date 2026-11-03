@@ -298,15 +298,21 @@ if (signal.signalType === 0) {
     continue; 
 }
 
-// Use the raw score (max 17)
-const dominantVotes = signal.signalType === 1 ? signal.buyScore : signal.sellScore;
+// 1. Get the raw score based on the direction
+const rawScore = signal.signalType === 1 ? signal.buyScore : signal.sellScore;
 
-// Require a minimum score of 8 out of 17 to enter a trade (a strong setup)
-// You can change 8 to 2 if you want it to trade more aggressively
-if (dominantVotes < 8) {
-    console.log(`⏭️ [SKIP] ${symbol} | Score: ${dominantVotes}/17 | required 8 | skipping trade`);
+// 2. Convert it to a percentage (Just like Uluka Ultra's confidence logic)
+const confidence = Math.round((rawScore / 17) * 100);
+
+// 3. Require a minimum confidence of 60% to trade (You can change this number)
+const MIN_CONFIDENCE = 60;
+
+if (confidence < MIN_CONFIDENCE) {
+    console.log(`⏭️ [SKIP] ${symbol} | Confidence: ${confidence}% (${rawScore}/17) | Required: ${MIN_CONFIDENCE}%`);
     continue;
 }
+
+console.log(`✅ [SIGNAL CONFIRMED] ${symbol} | Confidence: ${confidence}% (${rawScore}/17) | Proceeding to trade...`);
         // 📰 CHECK NEWS FILTER
         if (process.env.ENABLE_NEWS_FILTER !== 'false') {
           try {
