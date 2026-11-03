@@ -303,13 +303,6 @@ if (dominantVotes < 2) {
     console.log(`⏭️ [SKIP] ${symbol} | 1 vote | required 2 | skipping trade`);
     continue;
 }
-
-const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
-if (dominantVotes < 2) {
-    console.log(`⏭️ [SKIP] ${symbol} | 1 vote | required 2 | skipping trade`);
-    continue;
-}
-
         // 📰 CHECK NEWS FILTER
         if (process.env.ENABLE_NEWS_FILTER !== 'false') {
           try {
