@@ -5189,10 +5189,10 @@ app.all('/cron/dispatcher', async (req, res) => {
       }
     }
 
-    // Monday 07:xx UTC → weekly market outlook
-    if (utcDay === 1 && utcHour === 7) {
-      await runEndpoint('/cron/weekly-market-outlook', 'market_outlook');
-    }
+    // Sunday 21:00 UTC (Monday 2:30 AM IST) → weekly market outlook
+if (utcDay === 0 && utcHour === 21) {
+  await runEndpoint('/cron/weekly-market-outlook', 'market_outlook');
+}
 
     // Monday 08:xx UTC → weekly lead intelligence
     if (utcDay === 1 && utcHour === 8) {
