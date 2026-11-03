@@ -4687,6 +4687,106 @@ app.all('/cron/weekly-market-outlook', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// CRON: Weekly Crypto Market Outlook (Uluka Ultima)
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/crypto-weekly-outlook', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (secret !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+
+  try {
+    // 1. Fetch Live Crypto Prices (CoinGecko - Free, no API key)
+    let prices = { btc: 'N/A', eth: 'N/A', sol: 'N/A' };
+    try {
+        const cgRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
+        if (cgRes.ok) {
+            const data = await cgRes.json();
+            if (data.bitcoin) prices.btc = data.bitcoin.usd.toLocaleString();
+            if (data.ethereum) prices.eth = data.ethereum.usd.toLocaleString();
+            if (data.solana) prices.sol = data.solana.usd.toLocaleString();
+        }
+    } catch (e) { console.warn('CoinGecko API failed:', e.message); }
+
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateStr = tomorrow.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+
+    // 2. Build the Prompt
+    const prompt =
+      `You are the lead crypto analyst for Uluka Ultima, an automated crypto trading engine.\n\n` +
+      `Today is Sunday. The crypto market trades 24/7, but we are preparing for the new trading week starting ${dateStr}.\n\n` +
+      `Here are the EXACT live prices right now (do not invent your own):\n` +
+      `- Bitcoin (BTC): $${prices.btc}\n` +
+      `- Ethereum (ETH): $${prices.eth}\n` +
+      `- Solana (SOL): $${prices.sol}\n\n` +
+      `Write a "Weekly Crypto Outlook" post for our Telegram channel.\n` +
+      `Include:\n` +
+      `1. 🚀 A strong, engaging header.\n` +
+      `2. 📊 The live prices above.\n` +
+      `3. 🔍 Technical outlook for BTC (key support/resistance levels relative to the current price).\n` +
+      `4. ⚡ A brief note on ETH and Altcoins.\n` +
+      `5. 🤖 A short mention that "Uluka Ultima" is scanning the market 24/7 for high-probability setups.\n\n` +
+      `RULES:\n` +
+      `- Do NOT use markdown tables. Keep it clean and readable on mobile.\n` +
+      `- Use plain text with emojis.\n` +
+      `- Do NOT wrap in JSON or HTML.\n` +
+      `- Max 300 words.`;
+
+    // 3. Generate Content via AI
+    let post = '';
+    post = await callGroq({
+      system: 'You are a professional crypto analyst. Write only the post text.',
+      user: prompt,
+      maxTokens: 600,
+      temperature: 0.7
+    });
+
+    if (!post && CLAUDE_API_KEY) {
+      console.log('⚠️ Groq crypto outlook failed — falling back to Claude');
+      const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 600,
+          system: 'You are a professional crypto analyst. Write only the post text.',
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const aiData = await aiRes.json();
+      post = aiData.content?.[0]?.text || '';
+    }
+
+    post = (post || '').replace(/```\w*\s*/gi, '').trim();
+
+    // 4. Send to Telegram
+    if (post) {
+      const telegramMsg =
+        `🦉 <b>ULUKA ULTIMA WEEKLY OUTLOOK</b>\n` +
+        `📅 ${dateStr}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        post;
+
+      if (FREE_GROUP_ID)    await sendToTelegram(FREE_GROUP_ID, telegramMsg).catch(e => console.error(e.message));
+      if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, telegramMsg).catch(e => console.error(e.message));
+
+      // Alert the admin
+      await sendAdminAlert(`🪙 <b>Crypto Outlook Generated</b>\nPosted to Telegram (Free + Premium)`);
+    }
+
+    res.json({ ok: true, generated: !!post });
+
+  } catch (err) {
+    console.error('crypto-weekly-outlook error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
 // CRON: Weekly Lead Intelligence (Strategy Generator)
 // ═══════════════════════════════════════════════════════════
 app.all('/cron/weekly-lead-report', async (req, res) => {
@@ -4694,14 +4794,16 @@ app.all('/cron/weekly-lead-report', async (req, res) => {
   if (secret !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
 
   try {
-    const prompt =
-      `You are a growth hacker for an AI Forex trading bot. ` +
-      `I need to find new clients this week. Generate a "Lead Generation Strategy" containing EXACTLY 3 high-converting search queries and 3 reply templates I can use on Twitter/X, Reddit, and Discord.\n\n` +
+        const prompt =
+      `You are a growth hacker for a dual-product trading SaaS: Uluka Ultra (Forex EA) and Uluka Ultima (Crypto Bot).\n` +
+      `I need to find new clients for BOTH products this week.\n\n` +
+      `Generate a "Lead Generation Strategy" containing EXACTLY 3 high-converting search queries for Forex and 3 for Crypto, along with a reply template for each.\n\n` +
       `Format your response EXACTLY like this:\n\n` +
+      `💱 FOREX (ULUKA ULTRA)\n` +
       `🔍 SEARCH QUERY 1\n` +
-      `QUERY: [Exact search string to type into Twitter or Reddit]\n` +
+      `QUERY: [Exact search string]\n` +
       `PLATFORM: Twitter or Reddit\n` +
-      `APPROACH: [1 sentence on how to reply to them]\n\n` +
+      `APPROACH: [1 sentence on how to reply]\n\n` +
       `🔍 SEARCH QUERY 2\n` +
       `QUERY: [Exact search string]\n` +
       `PLATFORM: Twitter or Reddit\n` +
@@ -4710,7 +4812,20 @@ app.all('/cron/weekly-lead-report', async (req, res) => {
       `QUERY: [Exact search string]\n` +
       `PLATFORM: Twitter or Reddit\n` +
       `APPROACH: [1 sentence on how to reply]\n\n` +
-      `Do NOT use JSON. Respond ONLY with the text format above. Keep it under 300 words.`;
+      `🪙 CRYPTO (ULUKA ULTIMA)\n` +
+      `🔍 SEARCH QUERY 1\n` +
+      `QUERY: [Exact search string]\n` +
+      `PLATFORM: Twitter or Reddit\n` +
+      `APPROACH: [1 sentence on how to reply]\n\n` +
+      `🔍 SEARCH QUERY 2\n` +
+      `QUERY: [Exact search string]\n` +
+      `PLATFORM: Twitter or Reddit\n` +
+      `APPROACH: [1 sentence on how to reply]\n\n` +
+      `🔍 SEARCH QUERY 3\n` +
+      `QUERY: [Exact search string]\n` +
+      `PLATFORM: Twitter or Reddit\n` +
+      `APPROACH: [1 sentence on how to reply]\n\n` +
+      `Do NOT use JSON. Respond ONLY with the text format above. Keep it under 500 words.`;
 
     let reply = '';
 
