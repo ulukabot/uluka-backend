@@ -184,8 +184,6 @@ async function runTick() {
       // 🛡️ GUARDIAN ANGEL DD GUARD & WITHDRAWAL DETECTOR
       let ddLocked = false; // <--- NEW FLAG
 
-            console.log(`🔍 [DD CHECK] ${user.account_id} | Bybit Equity: $${equity} | DB Peak: $${user.peak_equity} | Limit: $${(user.peak_equity * 0.90).toFixed(2)}`);
-
       if (user.peak_equity > 0 && equity < (user.peak_equity * 0.90)) { 
         const dropPercent = ((user.peak_equity - equity) / user.peak_equity) * 100;
         const activeTrades = openPositions[user.account_id].length;
