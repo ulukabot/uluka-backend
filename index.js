@@ -288,16 +288,20 @@ async function runTick() {
         
         const tickSize = parseFloat(info.priceFilter.tickSize);
         
-        const { closes } = ind.parseKlines(klines);
-        const signal = strat.getScoreSignal(symbol, klines, tickSize, currentPrice, ind.calculateEMA(closes, 10), ind.calculateEMA(closes, 45));
+       const { closes } = ind.parseKlines(klines);
+const signal = strat.getScoreSignal(symbol, klines, tickSize, currentPrice, ind.calculateEMA(closes, 10), ind.calculateEMA(closes, 45));
 
-        const signal = strat.getScoreSignal(symbol, klines, tickSize, currentPrice, ind.calculateEMA(closes, 10), ind.calculateEMA(closes, 45));
-        
 // 🔍 DEBUG LOGS
 console.log(`📊 [SIGNAL] ${symbol} | Type: ${signal.signalType} | BuyScore: ${signal.buyScore} | SellScore: ${signal.sellScore}`);
 
 if (signal.signalType === 0) {
     continue; 
+}
+
+const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
+if (dominantVotes < 2) {
+    console.log(`⏭️ [SKIP] ${symbol} | 1 vote | required 2 | skipping trade`);
+    continue;
 }
 
 const dominantVotes = signal.signalType === 1 ? (signal.buyScore / 17) : (signal.sellScore / 17);
