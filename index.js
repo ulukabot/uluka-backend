@@ -5892,25 +5892,37 @@ app.post('/api/crypto/register', async (req, res) => {
     }
 
     try {
+        // Check if the licence exists
         const lic = await pool.query('SELECT * FROM crypto_users WHERE licence_key = $1', [licence_key]);
-        if (lic.rows.length > 0 && lic.rows[0].account_id !== account_id) {
+        
+        if (lic.rows.length === 0) {
+            return res.status(404).json({ error: 'Invalid licence key.' });
+        }
+
+        const existingAccountId = lic.rows[0].account_id;
+        
+        // ✅ FIX: Allow update if it's unbound (placeholder = licence_key) or matches their account_id
+        if (existingAccountId !== licence_key && existingAccountId !== account_id) {
             return res.status(403).json({ error: 'Licence already bound to another account' });
         }
 
         const encApiKey = encryptKey(api_key);
         const encApiSecret = encryptKey(api_secret);
 
+        // Update the row directly by licence_key
         await pool.query(`
-            INSERT INTO crypto_users (account_id, client_name, licence_key, telegram_id, api_key, api_secret, risk_percent, max_drawdown, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE')
-            ON CONFLICT (account_id) DO UPDATE SET
-                api_key = EXCLUDED.api_key,
-                api_secret = EXCLUDED.api_secret,
-                risk_percent = EXCLUDED.risk_percent,
-                max_drawdown = EXCLUDED.max_drawdown,
-                licence_key = EXCLUDED.licence_key,
-                telegram_id = EXCLUDED.telegram_id
-        `, [account_id, client_name || 'Crypto Client', licence_key, telegram_id, encApiKey, encApiSecret, risk_percent || 1.0, max_drawdown || 10.0]);
+            UPDATE crypto_users 
+            SET 
+                account_id = $1, 
+                client_name = $2, 
+                telegram_id = $3, 
+                api_key = $4, 
+                api_secret = $5, 
+                risk_percent = $6, 
+                max_drawdown = $7, 
+                status = 'ACTIVE'
+            WHERE licence_key = $8
+        `, [account_id, client_name || 'Crypto Client', telegram_id, encApiKey, encApiSecret, risk_percent || 1.0, max_drawdown || 10.0, licence_key]);
 
         res.json({ success: true, message: 'Client registered securely.' });
     } catch (err) {
