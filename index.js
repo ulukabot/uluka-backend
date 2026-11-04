@@ -2013,7 +2013,7 @@ app.post('/api/admin/generate-key', async (req, res) => {
 
         const {
             client_name,
-            product_type = 'forex', // ✅ NEW: Default to forex
+            product_type = 'forex',
             subscription = 'PRO',
             expires_on,
             equity_cap = 0,
@@ -2037,7 +2037,6 @@ app.post('/api/admin/generate-key', async (req, res) => {
             for (let i = 0; i < 8; i++) random += chars.charAt(Math.floor(Math.random() * chars.length));
             licence_key = `ULUKA-${random}`;
             
-            // Check BOTH tables to ensure the key is globally unique
             const checkForex = await pool.query('SELECT licence_key FROM licences WHERE licence_key = $1', [licence_key]);
             const checkCrypto = await pool.query('SELECT licence_key FROM crypto_users WHERE licence_key = $1', [licence_key]);
             
@@ -2048,13 +2047,12 @@ app.post('/api/admin/generate-key', async (req, res) => {
 
         let result;
         
-        // Route to the correct table
         if (product_type === 'crypto') {
-            // ✅ FIX: Use licence_key as a temporary account_id placeholder
+            // ✅ FIX: Added api_key and api_secret as empty strings to prevent NOT NULL errors
             result = await pool.query(
                 `INSERT INTO crypto_users (
-                    account_id, licence_key, client_name, expiry_date, status, telegram_id, current_balance, start_balance, risk_percent, max_drawdown
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    account_id, licence_key, client_name, expiry_date, status, telegram_id, current_balance, start_balance, risk_percent, max_drawdown, api_key, api_secret
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, '', '')
                 RETURNING *`,
                 [licence_key, licence_key, client_name, expires_on, 'ACTIVE', telegram_id, 0, 0, 1.0, 10.0]
             );
