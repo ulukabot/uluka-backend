@@ -2106,7 +2106,6 @@ app.get('/admin/generate', (req, res) => {
         .key-highlight { color: #F0B429; font-weight: bold; font-size: 18px; background: #0C1830; padding: 8px 12px; border-radius: 4px; display: inline-block; }
         .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #334466; }
         .subtitle { text-align: center; color: #8899BB; font-size: 12px; margin-top: -10px; margin-bottom: 10px; }
-        .hidden { display: none; }
     </style>
 </head>
 <body>
@@ -2116,7 +2115,7 @@ app.get('/admin/generate', (req, res) => {
 
     <form id="keyForm">
         <label>Product Type *</label>
-        <select id="product_type" onchange="toggleFields()">
+        <select id="product_type">
             <option value="forex">Uluka Ultra (Forex EA)</option>
             <option value="crypto">Uluka Ultima (Crypto Bot)</option>
         </select>
@@ -2124,21 +2123,19 @@ app.get('/admin/generate', (req, res) => {
         <label>Client Name *</label>
         <input type="text" id="client_name" placeholder="e.g. John Doe" required>
 
-        <div id="forex_fields">
-            <label>Subscription</label>
-            <select id="subscription">
-                <option value="PRO">PRO</option>
-                <option value="PREMIUM">PREMIUM</option>
-                <option value="TRIAL">TRIAL</option>
-                <option value="PAYE">PAYE</option>
-            </select>
-
-            <label>Equity Cap ($)</label>
-            <input type="number" id="equity_cap" placeholder="0 (no cap)" value="0">
-        </div>
+        <label>Subscription (Forex Only)</label>
+        <select id="subscription">
+            <option value="PRO">PRO</option>
+            <option value="PREMIUM">PREMIUM</option>
+            <option value="TRIAL">TRIAL</option>
+            <option value="PAYE">PAYE</option>
+        </select>
 
         <label>Expiry Date *</label>
         <input type="date" id="expires_on" required>
+
+        <label>Equity Cap ($) (Forex Only)</label>
+        <input type="number" id="equity_cap" placeholder="0 (no cap)" value="0">
 
         <label>Client Email (for reports)</label>
         <input type="email" id="email" placeholder="client@example.com">
@@ -2154,16 +2151,6 @@ app.get('/admin/generate', (req, res) => {
 </div>
 
 <script>
-    function toggleFields() {
-        const type = document.getElementById('product_type').value;
-        const forexFields = document.getElementById('forex_fields');
-        if (type === 'crypto') {
-            forexFields.classList.add('hidden');
-        } else {
-            forexFields.classList.remove('hidden');
-        }
-    }
-
     document.getElementById('keyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -2210,7 +2197,6 @@ app.get('/admin/generate', (req, res) => {
                 
                 let detailsHtml = '';
                 if (data.is_crypto) {
-                    // Adjust for Crypto response format
                     const expDate = new Date(data.licence.expiry_date).toLocaleDateString('en-GB');
                     detailsHtml = \`
                         <b>Client:</b> \${data.licence.client_name}<br>
@@ -2218,7 +2204,6 @@ app.get('/admin/generate', (req, res) => {
                         <b>Type:</b> Crypto Bot
                     \`;
                 } else {
-                    // Adjust for Forex response format
                     const expDate = new Date(data.licence.expires_on).toLocaleDateString('en-GB');
                     detailsHtml = \`
                         <b>Client:</b> \${data.licence.client_name}<br>
