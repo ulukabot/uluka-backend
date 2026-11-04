@@ -439,7 +439,7 @@ console.log(`✅ [SIGNAL CONFIRMED] ${symbol} | Confidence: ${confidence}% (${ra
   } // closes for (const user of users)
 } // closes runTick
 
-// 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL) - FIXED
+// 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL)
 async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 0.001, minOrderQty = 0.001) {
   if (!openPositions[user.account_id]) return;
   const positions = openPositions[user.account_id];
@@ -449,112 +449,105 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
     if (pos.symbol !== symbol) continue;
     
     const activeSl = pos.virtualSl || pos.slPrice;
-    // ✅ FIX: The close side MUST be the opposite of the position side
     const closeSide = pos.side.toUpperCase() === 'BUY' ? 'Sell' : 'Buy';
 
-    // 🛑 1. CHECK TP3 (Full close)
-    if ((pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price)) {
-      await bybit.placeOrder({ 
-        category: 'linear', symbol: pos.symbol, side: closeSide, 
-        orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 
-      });
-      await closeTrade(user, i, pos, pos.tp3Price, 'TP3 Hit (Full Close)', bybit); 
-      continue;
-    }
-
-    // 🛑 2. CHECK TP2 (Close 30%, move SL to TP1)
-    if ((pos.side === 'Buy' && currentPrice >= pos.tp2Price) || (pos.side === 'Sell' && currentPrice <= pos.tp2Price)) {
-      if (!pos.tp2Hit) {
-        pos.tp2Hit = true;
-        
-        // Format partial qty to match Bybit step size
-        let rawQty = pos.qty * 0.30;
-        let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
-        closeQty = parseFloat(closeQty.toFixed(4));
-
-        if (closeQty < minOrderQty) {
-          closeQty = pos.qty; // Too small to split, close entire position
-        }
-
-        await bybit.placeOrder({ 
-          category: 'linear', symbol: pos.symbol, side: closeSide, 
-          orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 
-        });
-        
-        if (closeQty < pos.qty) {
-            // ✅ FIX: Use positionIdx: 0 for setting SL
-            await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.tp1Price, positionIdx: 0 });
-            pos.virtualSl = pos.tp1Price; 
-            pos.slPrice = pos.tp1Price; 
-            pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
-            console.log(`\n[${now()}] ✂️ TP2 HIT: ${user.account_id} | ${symbol} | Closed 30% | SL moved to TP1`);
-            if (user.is_master && process.env.IS_MASTER === 'true') {
-              await tg.sendWebhook({ 
-                type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-                symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, 
-                entry: pos.entryPrice, open_pnl: '30% Closed', 
-                be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId, time: now() 
-              });
-            }
-        } else {
-            await closeTrade(user, i, pos, pos.tp2Price, 'TP2 Hit (Full Close)', bybit);
-        }
+    try { // ✅ START TRY BLOCK
+      
+      // 🛑 1. CHECK TP3 (Full close)
+      if ((pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price)) {
+        await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 });
+        await closeTrade(user, i, pos, pos.tp3Price, 'TP3 Hit (Full Close)', bybit); 
         continue;
       }
-    }
 
-    // 🛑 3. CHECK TP1 (Close 50%, move SL to Breakeven)
-    if ((pos.side === 'Buy' && currentPrice >= pos.tp1Price) || (pos.side === 'Sell' && currentPrice <= pos.tp1Price)) {
-      if (!pos.tp1Hit) {
-        pos.tp1Hit = true;
-        
-        // Format partial qty to match Bybit step size
-        let rawQty = pos.qty * 0.50;
-        let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
-        closeQty = parseFloat(closeQty.toFixed(4));
+      // 🛑 2. CHECK TP2 (Close 30%, move SL to TP1)
+      if ((pos.side === 'Buy' && currentPrice >= pos.tp2Price) || (pos.side === 'Sell' && currentPrice <= pos.tp2Price)) {
+        if (!pos.tp2Hit) {
+          pos.tp2Hit = true;
+          
+          let rawQty = pos.qty * 0.30;
+          let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
+          closeQty = parseFloat(closeQty.toFixed(4));
 
-        if (closeQty < minOrderQty) {
-          closeQty = pos.qty;
+          if (closeQty < minOrderQty) closeQty = pos.qty;
+
+          await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 });
+          
+          if (closeQty < pos.qty) {
+              await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.tp1Price, positionIdx: 0 });
+              pos.virtualSl = pos.tp1Price; 
+              pos.slPrice = pos.tp1Price; 
+              pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
+              console.log(`\n[${now()}] ✂️ TP2 HIT: ${user.account_id} | ${symbol} | Closed 30% | SL moved to TP1`);
+              if (user.is_master && process.env.IS_MASTER === 'true') {
+                await tg.sendWebhook({ 
+                  type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
+                  symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, 
+                  entry: pos.entryPrice, open_pnl: '30% Closed', 
+                  be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId, time: now() 
+                });
+              }
+          } else {
+              await closeTrade(user, i, pos, pos.tp2Price, 'TP2 Hit (Full Close)', bybit);
+          }
+          continue;
         }
+      }
 
-        await bybit.placeOrder({ 
-          category: 'linear', symbol: pos.symbol, side: closeSide, 
-          orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 
-        });
-        
-        if (closeQty < pos.qty) {
-            // ✅ FIX: Use positionIdx: 0 for setting SL
-            await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.entryPrice, positionIdx: 0 });
-            pos.virtualSl = pos.entryPrice; 
-            pos.slPrice = pos.entryPrice; 
-            pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
-            console.log(`\n[${now()}] ✂️ TP1 HIT: ${user.account_id} | ${symbol} | Closed 50% | SL moved to Entry`);
-            if (user.is_master && process.env.IS_MASTER === 'true') {
-              await tg.sendWebhook({ 
-                type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-                symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, 
-                entry: pos.entryPrice, open_pnl: '50% Closed', 
-                be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId, time: now() 
-              });
-            }
-        } else {
-            await closeTrade(user, i, pos, pos.tp1Price, 'TP1 Hit (Full Close)', bybit);
+      // 🛑 3. CHECK TP1 (Close 50%, move SL to Breakeven)
+      if ((pos.side === 'Buy' && currentPrice >= pos.tp1Price) || (pos.side === 'Sell' && currentPrice <= pos.tp1Price)) {
+        if (!pos.tp1Hit) {
+          pos.tp1Hit = true;
+          
+          let rawQty = pos.qty * 0.50;
+          let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
+          closeQty = parseFloat(closeQty.toFixed(4));
+
+          if (closeQty < minOrderQty) closeQty = pos.qty;
+
+          await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 });
+          
+          if (closeQty < pos.qty) {
+              await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.entryPrice, positionIdx: 0 });
+              pos.virtualSl = pos.entryPrice; 
+              pos.slPrice = pos.entryPrice; 
+              pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
+              console.log(`\n[${now()}] ✂️ TP1 HIT: ${user.account_id} | ${symbol} | Closed 50% | SL moved to Entry`);
+              if (user.is_master && process.env.IS_MASTER === 'true') {
+                await tg.sendWebhook({ 
+                  type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
+                  symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, 
+                  entry: pos.entryPrice, open_pnl: '50% Closed', 
+                  be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId, time: now() 
+                });
+              }
+          } else {
+              await closeTrade(user, i, pos, pos.tp1Price, 'TP1 Hit (Full Close)', bybit);
+          }
+          continue;
         }
+      }
+
+      // 🛑 4. CHECK STOP LOSS
+      if ((pos.side === 'Buy' && currentPrice <= activeSl) || (pos.side === 'Sell' && currentPrice >= activeSl)) {
+        await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 });
+        await closeTrade(user, i, pos, activeSl, 'SL Hit', bybit); 
         continue;
       }
-    }
 
-    // 🛑 4. CHECK STOP LOSS
-    if ((pos.side === 'Buy' && currentPrice <= activeSl) || (pos.side === 'Sell' && currentPrice >= activeSl)) {
-      await bybit.placeOrder({ 
-        category: 'linear', symbol: pos.symbol, side: closeSide, 
-        orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 
-      });
-      await closeTrade(user, i, pos, activeSl, 'SL Hit', bybit); 
-      continue;
+    } catch (error) {
+      // 🚨 THE CRASH FIX: Catch the 110017 error
+      const errMsg = error.message || '';
+      if (error.retCode === 110017 || errMsg.includes('110017')) {
+        console.log(`\n[${now()}] ⚠️ Bybit says position is zero for ${pos.symbol}. Removing ghost trade from local state.`);
+        openPositions[user.account_id].splice(i, 1); // Remove from memory so it stops trying to close it
+      } else {
+        console.error(`\n[${now()}] ❌ Error managing position ${pos.symbol}:`, error.message);
+      }
     }
   }
 }
+
 // 📝 CLOSE TRADE & UPDATE METRICS
 async function closeTrade(user, index, pos, closePrice, reason, bybit) {
   let pnl = pos.side === 'Buy' ? (closePrice - pos.entryPrice) * pos.qty : (pos.entryPrice - closePrice) * pos.qty;
