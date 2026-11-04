@@ -142,302 +142,133 @@ async function syncOpenTrades() {
 }
 
 // 🔄 MAIN TICK LOOP
+// 🔄 MAIN TICK LOOP (Copy-Trading Architecture)
 async function runTick() {
   const users = await fetchUsers();
   if (!users || users.length === 0) return;
 
-  for (const user of users) {
+  // 1. Identify the Master Account
+  const masterUser = users.find(u => u.is_master);
+  if (!masterUser) {
+    console.log('❌ No Master user found. Cannot scan or trade.');
+    return;
+  }
+
+  // 2. Get symbols from Master's configuration
+  const masterSymbols = (masterUser.symbols || 'BTCUSDT,ETHUSDT')
+    .split(',')
+    .map(s => s.trim().toUpperCase())
+    .filter(s => /USDT$/.test(s));
+  if (masterSymbols.length === 0) masterSymbols.push('BTCUSDT', 'ETHUSDT');
+
+  // 3. Create a Master instance for Market Data Fetching
+  const masterBybit = new BybitClient({ 
+    apiKey: masterUser.api_key, 
+    apiSecret: masterUser.api_secret, 
+    testnet: false, 
+    demo: process.env.BYBIT_DEMO === 'true' 
+  });
+
+  // 4. Loop through each symbol ONCE
+  for (const symbol of masterSymbols) {
+    const symbolKey = `MASTER-${symbol}`;
+
+    // --- A. Fetch Market Data (ONCE per symbol) ---
+    let klines, ticker, info;
     try {
-      const bybit = new BybitClient({ 
-        apiKey: user.api_key, 
-        apiSecret: user.api_secret, 
-        testnet: false, 
-        demo: process.env.BYBIT_DEMO === 'true' 
+      klines = await masterBybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
+      ticker = await masterBybit.getTicker(symbol);
+      info = await masterBybit.getInstrumentsInfo(symbol);
+    } catch (e) { 
+      continue; 
+    }
+
+    if (!klines || !Array.isArray(klines) || klines.length < 50 || !ticker || !ticker.lastPrice || !info) continue;
+
+    const currentPrice = parseFloat(ticker.lastPrice);
+    const tickSize = parseFloat(info.priceFilter.tickSize);
+    let qtyStep = 0.001, minOrderQty = 0.001;
+    if (info.lotSizeFilter) {
+        qtyStep = parseFloat(info.lotSizeFilter.qtyStep);
+        minOrderQty = parseFloat(info.lotSizeFilter.minOrderQty);
+    }
+
+    // --- B. Manage Positions for ALL users ---
+    for (const user of users) {
+      if (!openPositions[user.account_id]) openPositions[user.account_id] = [];
+      
+      const userBybit = new BybitClient({ 
+        apiKey: user.api_key, apiSecret: user.api_secret, 
+        testnet: false, demo: process.env.BYBIT_DEMO === 'true' 
       });
       
-      if (!consecutiveLosses[user.account_id]) {
-        consecutiveLosses[user.account_id] = 0;
-      }
+      await manageOpenPositions(user, symbol, currentPrice, userBybit, qtyStep, minOrderQty);
+      await new Promise(r => setTimeout(r, 100)); // Small buffer to prevent rate limits
+    }
 
-      // 🛡️ SAFE BALANCE FETCH
-      let balData;
+    // --- C. Master Scan for New Entries ---
+    const currentCandleTime = parseInt(klines[0][0]);
+    if (lastCandleTimes[symbolKey] === currentCandleTime) continue;
+    lastCandleTimes[symbolKey] = currentCandleTime;
+
+    // Calculate signal ONCE on the Master
+    const { closes } = ind.parseKlines(klines);
+    const signal = strat.getScoreSignal(symbol, klines, tickSize, currentPrice, ind.calculateEMA(closes, 10), ind.calculateEMA(closes, 45));
+
+    if (signal.signalType === 0) continue;
+
+    const rawScore = signal.signalType === 1 ? signal.buyScore : signal.sellScore;
+    const confidence = Math.min(100, Math.round((rawScore / 17) * 100));
+    
+    if (confidence < 60) {
+      console.log(`⏭️ [SKIP] ${symbol} | Confidence: ${confidence}% (${rawScore}/17)`);
+      continue;
+    }
+
+    console.log(`✅ [SIGNAL CONFIRMED] ${symbol} | Confidence: ${confidence}% | Distributing to clients...`);
+
+    // Check News
+    if (process.env.ENABLE_NEWS_FILTER !== 'false') {
       try {
-        balData = await bybit.getBalance();
-      } catch (e) {
-        console.log(`⏭️ Skipping ${user.account_id}: Bybit API error (Balance)`);
-        continue;
-      }
-      
-      if (!balData || !balData.list || !Array.isArray(balData.list) || balData.list.length === 0) {
-        console.log(`⏭️ Skipping ${user.account_id}: Empty balance list from Bybit.`);
-        continue;
-      }
-
-      const totalEquity = parseFloat(balData.list[0]?.totalEquity || 0);
-      const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
-      const equity = totalEquity > 0 ? totalEquity : parseFloat(usdt?.equity || 0);
-      
-      if (equity <= 0) continue;
-
-      // 🛡️ TIER CAP GUARD
-      if (equity > user.tier_cap) {
-        console.log(`⏭️ Skipping ${user.account_id}: Equity $${equity} exceeds Tier Cap $${user.tier_cap}`);
-        continue; 
-      }
-
-      // Ensure position array exists BEFORE DD checks
-      if (!openPositions[user.account_id]) {
-        openPositions[user.account_id] = [];
-      }
-
-      // 🛡️ GUARDIAN ANGEL DD GUARD & WITHDRAWAL DETECTOR
-      let ddLocked = false; // <--- NEW FLAG
-
-      if (user.peak_equity > 0 && equity < (user.peak_equity * 0.90)) { 
-        const dropPercent = ((user.peak_equity - equity) / user.peak_equity) * 100;
-        const activeTrades = openPositions[user.account_id].length;
-        
-        // 1. WITHDRAWAL DETECTION (Drop > 50% and no open trades)
-        if (dropPercent > 50 && activeTrades === 0) {
-          console.log(`💰 WITHDRAWAL DETECTED for ${user.account_id}. Resetting peak equity to $${equity}`);
-          
-          await fetch('https://uluka-backend-production.up.railway.app/api/crypto/update-equity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-admin-secret': process.env.ADMIN_SECRET },
-            body: JSON.stringify({ account_id: user.account_id, peak: equity, daily_start: equity })
-          }).catch(() => {});
-          
-          if (user.is_master) {
-            await tg.sendMessage(`💰 <b>WITHDRAWAL DETECTED</b> 🦉\n\nAccount: ${user.account_id}\nNew Equity: $${equity}\nPeak Equity Reset. Trading will resume.`);
-          }
-          continue; 
-        } 
-        // 2. ACTUAL DRAWDOWN — Lock new entries only
-        else {
-          ddLocked = true; // <--- NO MORE CONTINUE
-          if (user.is_master && !ddAlertSent[user.account_id]) {
-            await tg.sendMessage(`🚨 <b>ULUKA ULTIMA - GUARDIAN ANGEL</b> 🦉\n\nAccount: ${user.account_id}\nDrawdown limit hit (>10%).\nEquity: $${equity}\nPeak: $${user.peak_equity}\nNew entries locked. Managing open positions.`);
-            ddAlertSent[user.account_id] = true;
-          }
-        }
-      } else {
-        // RESET DD ALERT IF EQUITY RECOVERS
-        ddAlertSent[user.account_id] = false;
-
-        // UPDATE PEAK EQUITY TO BACKEND
-        if (equity > user.peak_equity || user.daily_start_equity === 0) {
-          await fetch('https://uluka-backend-production.up.railway.app/api/crypto/update-equity', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-admin-secret': process.env.ADMIN_SECRET },
-            body: JSON.stringify({ account_id: user.account_id, peak: Math.max(equity, user.peak_equity), daily_start: equity })
-          }).catch(() => {});
-        }
-      }
-
-      // Sanitize symbols
-      const userSymbols = (user.symbols || 'BTCUSDT,ETHUSDT')
-        .split(',')
-        .map(s => s.trim().toUpperCase())
-        .filter(s => /USDT$/.test(s));
-      if (userSymbols.length === 0) userSymbols.push('BTCUSDT', 'ETHUSDT');
-
-      for (const symbol of userSymbols) {
-        const symbolKey = `${user.account_id}-${symbol}`;
-        
-        if (symbolCooldowns[symbolKey] && Date.now() < symbolCooldowns[symbolKey]) {
+        const newsRes = await fetch('https://uluka-backend-production.up.railway.app/api/test-news');
+        const newsData = await newsRes.json();
+        if (newsData.high_news_blocked || newsData.medium_news_blocked) {
+          console.log(`📰 NEWS BLOCK: Skipping ${symbol}`);
           continue;
         }
-        
-        if (lastCandleTimes[symbolKey] === undefined) {
-          lastCandleTimes[symbolKey] = 0;
-        }
-
-        let klines;
-        try {
-          klines = await bybit.getKlines({ symbol, interval: config.timeframe, limit: 100 });
-        } catch (e) { 
-          continue; 
-        }
-        
-        if (!klines || !Array.isArray(klines) || klines.length < 50) continue;
-        if (!klines[0] || !klines[0][0]) continue;
-
-        let ticker;
-        try {
-          ticker = await bybit.getTicker(symbol);
-        } catch (e) { 
-          continue; 
-        }
-        
-                if (!ticker || !ticker.lastPrice) continue;
-        
-        const currentPrice = parseFloat(ticker.lastPrice);
-
-               let info;
-        try {
-          info = await bybit.getInstrumentsInfo(symbol);
-        } catch (e) { 
-          continue; 
-        }
-
-        if (!info || !info.priceFilter) continue;
-        
-        const tickSize = parseFloat(info.priceFilter.tickSize);
-        
-        // 🔥 NEW: Get precision for quantity
-        let qtyStep = 0.001;
-        let minOrderQty = 0.001;
-        if (info.lotSizeFilter) {
-            qtyStep = parseFloat(info.lotSizeFilter.qtyStep);
-            minOrderQty = parseFloat(info.lotSizeFilter.minOrderQty);
-        }
-
-        // 🔑 TRADE MANAGEMENT RUNS FIRST — ALWAYS — EVEN WHEN ddLocked
-        await manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep, minOrderQty);
-
-        // If DD locked, skip NEW entry logic for this symbol
-        if (ddLocked) continue;
-
-        // New entries only fire once per closed candle
-        const currentCandleTime = parseInt(klines[0][0]); 
-        if (lastCandleTimes[symbolKey] === currentCandleTime) {
-          continue; 
-        }
-        lastCandleTimes[symbolKey] = currentCandleTime;
-        
-       const { closes } = ind.parseKlines(klines);
-const signal = strat.getScoreSignal(symbol, klines, tickSize, currentPrice, ind.calculateEMA(closes, 10), ind.calculateEMA(closes, 45));
-
-// 🔍 DEBUG LOGS
-console.log(`📊 [SIGNAL] ${symbol} | Type: ${signal.signalType} | BuyScore: ${signal.buyScore} | SellScore: ${signal.sellScore}`);
-
-if (signal.signalType === 0) {
-    continue; 
-}
-
-// 1. Get the raw score based on the direction
-const rawScore = signal.signalType === 1 ? signal.buyScore : signal.sellScore;
-
-// Cap the confidence at 100% so it doesn't show 200% on stacked signals
-const confidence = Math.min(100, Math.round((rawScore / 17) * 100));
-
-// 3. Require a minimum confidence of 60% to trade (You can change this number)
-const MIN_CONFIDENCE = 60;
-
-if (confidence < MIN_CONFIDENCE) {
-    console.log(`⏭️ [SKIP] ${symbol} | Confidence: ${confidence}% (${rawScore}/17) | Required: ${MIN_CONFIDENCE}%`);
-    continue;
-}
-
-console.log(`✅ [SIGNAL CONFIRMED] ${symbol} | Confidence: ${confidence}% (${rawScore}/17) | Proceeding to trade...`);
-        // 📰 CHECK NEWS FILTER
-        if (process.env.ENABLE_NEWS_FILTER !== 'false') {
-          try {
-            const newsRes = await fetch('https://uluka-backend-production.up.railway.app/api/test-news');
-            const newsData = await newsRes.json();
-            if (newsData.high_news_blocked || newsData.medium_news_blocked) {
-              console.log(`📰 NEWS BLOCK: Skipping ${symbol} — High: ${newsData.high_news_blocked}, Medium: ${newsData.medium_news_blocked}`);
-              continue;
-            }
-          } catch (e) {
-            console.error('❌ News API check failed:', e.message);
-          }
-        }
-
-        // 🧬 DNA BLOCKING
-        const stratName = getDominantStrategy(signal);
-        const dnaStats = await db.getDNAStats(symbol, 'strategy', stratName);
-        
-        if (dnaStats) {
-          const total = dnaStats.wins + dnaStats.losses;
-          const winRate = total > 0 ? (dnaStats.wins / total) * 100 : 0;
-          if (total >= 5 && winRate < 30) {
-            console.log(`🧬 DNA BLOCK: ${user.account_id} | ${symbol} ${stratName} has a ${winRate.toFixed(1)}% win rate.`);
-            continue;
-          }
-        }
-
-                // 🔥 FIX: Check the database to ensure we don't have an open trade
-        const dbCheck = await pool.query(
-            `SELECT id FROM crypto_trades WHERE account_id = $1 AND symbol = $2 AND status = 'OPEN' LIMIT 1`,
-            [user.account_id, symbol]
-        );
-        const hasOpenDbTrade = dbCheck.rows.length > 0;
-
-        const openPos = openPositions[user.account_id].find(p => p.symbol === symbol);
-        
-        // If either memory or the database has an open trade, skip opening a new one
-        if (!openPos && !hasOpenDbTrade) {
-          if (consecutiveLosses[user.account_id] >= config.maxConsecutiveLosses) {
-            console.log(`🛑 CAPITAL PROTECTION: ${user.account_id} halted due to consecutive losses.`);
-            continue;
-          }
-          
-          let currentRisk = user.risk_percent;
-          if (config.consecutiveLossGovernor[consecutiveLosses[user.account_id]]) { 
-            currentRisk *= config.consecutiveLossGovernor[consecutiveLosses[user.account_id]];
-            console.log(`⚠️ Loss Governor Active for ${user.account_id}: Reduced risk to ${currentRisk}%`);
-          }
-
-          const adjustedConfig = { ...config, riskPerTradePercent: currentRisk };
-          
-          const isSafe = await checkLiquidity(bybit, symbol, signal.signalType === 1 ? 'BUY' : 'SELL', currentPrice);
-          if (!isSafe) {
-            console.log(`⏭️ Skipping ${symbol}: Large liquidity wall detected.`);
-            continue;
-          }
-          
-          const plan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, adjustedConfig);
-          
-          if (plan) {
-            const livePos = await execution.executeLiveTrade(bybit, plan, signal, adjustedConfig, user);
-            if (livePos) {
-              livePos.symbol = symbol; 
-              livePos.side = plan.side; 
-              livePos.regime = signal.regime;
-              livePos.primaryStrategy = stratName;
-              openPositions[user.account_id].push(livePos);
-            }
-          }
-        } else {
-          // 🔄 HYBRID FLIP LOGIC
-          const isOpp = (openPos.side === 'BUY' && signal.signalType === -1) || (openPos.side === 'SELL' && signal.signalType === 1);
-          
-          if (isOpp) {
-            const slDist = Math.abs(openPos.entryPrice - openPos.slPrice);
-            const lossDist = openPos.side === 'BUY' ? (openPos.entryPrice - currentPrice) : (currentPrice - openPos.entryPrice);
-            
-            if (lossDist > (slDist * 0.50)) {
-              console.log(`\n🔄 HYBRID FLIP TRIGGERED for ${user.account_id} on ${symbol}`);
-              await bybit.closePosition({ symbol: openPos.symbol, positionSide: openPos.side, qty: openPos.qty });
-              const idx = openPositions[user.account_id].indexOf(openPos);
-              await closeTrade(user, idx, openPos, currentPrice, 'Hybrid Flip (Reversal)', bybit);
-              
-              const plan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, { ...config, riskPerTradePercent: user.risk_percent });
-              
-              if (plan) {
-                const livePos = await execution.executeLiveTrade(bybit, plan, signal, { ...config, riskPerTradePercent: user.risk_percent }, user);
-                if (livePos) { 
-                  livePos.symbol = symbol; 
-                  livePos.side = plan.side; 
-                  livePos.regime = signal.regime;
-                  livePos.primaryStrategy = stratName; 
-                  openPositions[user.account_id].push(livePos); 
-                }
-              }
-            }
-          }
-        }
-      } // closes for (const symbol of userSymbols)
-      
-      // 1-SECOND DELAY BETWEEN USERS
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-    } catch (e) { 
-      console.error(`❌ Error on ${user.account_id}:`, e.message, e.stack); // <--- ADDED e.stack
+      } catch (e) {}
     }
-  } // closes for (const user of users)
-} // closes runTick
+
+    // Master DB Limit Check
+    const dbCheck = await pool.query(
+        `SELECT id FROM crypto_trades WHERE account_id = $1 AND symbol = $2 AND status = 'OPEN' LIMIT 1`,
+        [masterUser.account_id, symbol]
+    );
+    if (dbCheck.rows.length > 0) {
+        console.log(`⏭️ Master already has an open ${symbol} trade. Skipping.`);
+        continue;
+    }
+
+    // Build Master Plan
+    try {
+        const balData = await masterBybit.getBalance();
+        const totalEquity = parseFloat(balData.list[0]?.totalEquity || 0);
+        const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
+        const equity = totalEquity > 0 ? totalEquity : parseFloat(usdt?.equity || 0);
+
+        const masterPlan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, config);
+
+        if (masterPlan) {
+            // 🔥 THIS IS THE MAGIC: Send to Copy Engine to distribute to Master + Clients
+            await execution.copyTradeToClients(masterPlan, signal, config, info);
+        }
+    } catch (e) {
+        console.error(`❌ Error building master plan:`, e.message);
+    }
+
+    await new Promise(r => setTimeout(r, 1000)); // 1-second delay between symbols
+  }
+}
 
 // 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL)
 async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 0.001, minOrderQty = 0.001) {
