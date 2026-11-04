@@ -5999,6 +5999,48 @@ app.get('/api/crypto/stats/:account_id', async (req, res) => {
     }
 });
 
+// ─── CRYPTO SAAS: Close Client Trade (For PAYE tracking) ───
+app.post('/api/crypto/close-trade', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+    const { account_id, master_ticket, exit_price, pnl_usd } = req.body;
+    
+    try {
+        // 1. Mark the trade as CLOSED
+        await pool.query(`
+            UPDATE crypto_client_trades 
+            SET status = 'CLOSED', exit_price = $1, pnl_usd = $2, closed_at = NOW()
+            WHERE account_id = $3 AND master_ticket = $4 AND status = 'OPEN'
+        `, [exit_price, pnl_usd, account_id, master_ticket]);
+
+        // 2. Fetch the user's current balance and total payee
+        const userRes = await pool.query('SELECT current_balance, payee_25 FROM crypto_users WHERE account_id = $1', [account_id]);
+        
+        if (userRes.rows.length > 0) {
+            const currentBalance = parseFloat(userRes.rows[0].current_balance || 0);
+            const currentPayee = parseFloat(userRes.rows[0].payee_25 || 0);
+            
+            // 3. Calculate new balance and new PAYE owed (25% of profit)
+            const newBalance = currentBalance + parseFloat(pnl_usd);
+            let newPayee = currentPayee;
+            if (parseFloat(pnl_usd) > 0) {
+                newPayee += parseFloat(pnl_usd) * 0.25;
+            }
+
+            // 4. Update the user's profile
+            await pool.query(`
+                UPDATE crypto_users 
+                SET current_balance = $1, payee_25 = $2
+                WHERE account_id = $3
+            `, [newBalance, newPayee, account_id]);
+        }
+
+        res.json({ success: true, message: 'Trade closed and balance updated.' });
+    } catch (err) {
+        console.error('🔥 Crypto close-trade error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── CRYPTO SAAS: Fetch Active Users (For the Crypto Bot) ──────────
 app.get('/api/crypto/active-users', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) {
