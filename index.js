@@ -2001,6 +2001,9 @@ app.get('/api/public/trades', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// Key Generator //
+
 app.post('/api/admin/generate-key', async (req, res) => {
     try {
         const secret = req.headers['x-admin-secret'] || req.body.admin_secret;
@@ -2034,7 +2037,7 @@ app.post('/api/admin/generate-key', async (req, res) => {
             for (let i = 0; i < 8; i++) random += chars.charAt(Math.floor(Math.random() * chars.length));
             licence_key = `ULUKA-${random}`;
             
-            // ✅ Check BOTH tables to ensure the key is globally unique
+            // Check BOTH tables to ensure the key is globally unique
             const checkForex = await pool.query('SELECT licence_key FROM licences WHERE licence_key = $1', [licence_key]);
             const checkCrypto = await pool.query('SELECT licence_key FROM crypto_users WHERE licence_key = $1', [licence_key]);
             
@@ -2045,14 +2048,15 @@ app.post('/api/admin/generate-key', async (req, res) => {
 
         let result;
         
-        // ✅ Route to the correct table based on the dropdown
+        // Route to the correct table
         if (product_type === 'crypto') {
+            // ✅ FIX: Use licence_key as a temporary account_id placeholder
             result = await pool.query(
                 `INSERT INTO crypto_users (
-                    licence_key, client_name, expiry_date, status, telegram_id, current_balance, start_balance, risk_percent, max_drawdown
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    account_id, licence_key, client_name, expiry_date, status, telegram_id, current_balance, start_balance, risk_percent, max_drawdown
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING *`,
-                [licence_key, client_name, expires_on, 'ACTIVE', telegram_id, 0, 0, 1.0, 10.0]
+                [licence_key, licence_key, client_name, expires_on, 'ACTIVE', telegram_id, 0, 0, 1.0, 10.0]
             );
             return res.status(201).json({
                 success: true,
