@@ -2001,10 +2001,6 @@ app.get('/api/public/trades', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-// ============================================================
-// KEY GENERATOR – ADMIN API + GUI
-// ============================================================
-
 app.post('/api/admin/generate-key', async (req, res) => {
     try {
         const secret = req.headers['x-admin-secret'] || req.body.admin_secret;
@@ -2014,6 +2010,7 @@ app.post('/api/admin/generate-key', async (req, res) => {
 
         const {
             client_name,
+            product_type = 'forex', // ✅ NEW: Default to forex
             subscription = 'PRO',
             expires_on,
             equity_cap = 0,
@@ -2036,27 +2033,50 @@ app.post('/api/admin/generate-key', async (req, res) => {
             let random = '';
             for (let i = 0; i < 8; i++) random += chars.charAt(Math.floor(Math.random() * chars.length));
             licence_key = `ULUKA-${random}`;
-            const check = await pool.query('SELECT licence_key FROM licences WHERE licence_key = $1', [licence_key]);
-            if (check.rows.length === 0) keyExists = false;
+            
+            // ✅ Check BOTH tables to ensure the key is globally unique
+            const checkForex = await pool.query('SELECT licence_key FROM licences WHERE licence_key = $1', [licence_key]);
+            const checkCrypto = await pool.query('SELECT licence_key FROM crypto_users WHERE licence_key = $1', [licence_key]);
+            
+            if (checkForex.rows.length === 0 && checkCrypto.rows.length === 0) keyExists = false;
             attempts++;
         }
         if (keyExists) return res.status(500).json({ error: 'Failed to generate unique key' });
 
-        const result = await pool.query(
-            `INSERT INTO licences (
-                licence_key, client_name, subscription, expires_on, equity_cap, status,
-                duration, account_id, telegram_id, email, hwid, creation_date, activations, blacklisted
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), 0, FALSE)
-            RETURNING *`,
-            [licence_key, client_name, subscription, expires_on, equity_cap, status,
-             duration, account_id, telegram_id, email, hwid]
-        );
-
-        res.status(201).json({
-            success: true,
-            message: 'Licence key generated!',
-            licence: result.rows[0]
-        });
+        let result;
+        
+        // ✅ Route to the correct table based on the dropdown
+        if (product_type === 'crypto') {
+            result = await pool.query(
+                `INSERT INTO crypto_users (
+                    licence_key, client_name, expiry_date, status, telegram_id, current_balance, start_balance, risk_percent, max_drawdown
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                RETURNING *`,
+                [licence_key, client_name, expires_on, 'ACTIVE', telegram_id, 0, 0, 1.0, 10.0]
+            );
+            return res.status(201).json({
+                success: true,
+                message: 'Crypto Licence generated!',
+                licence: result.rows[0],
+                is_crypto: true
+            });
+        } else {
+            result = await pool.query(
+                `INSERT INTO licences (
+                    licence_key, client_name, subscription, expires_on, equity_cap, status,
+                    duration, account_id, telegram_id, email, hwid, creation_date, activations, blacklisted
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), 0, FALSE)
+                RETURNING *`,
+                [licence_key, client_name, subscription, expires_on, equity_cap, status,
+                 duration, account_id, telegram_id, email, hwid]
+            );
+            return res.status(201).json({
+                success: true,
+                message: 'Forex Licence generated!',
+                licence: result.rows[0],
+                is_crypto: false
+            });
+        }
     } catch (error) {
         console.error('🔥 Key gen error:', error.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -2068,140 +2088,55 @@ app.get('/admin/generate', (req, res) => {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Uluka Ultra – Key Generator</title>
+    <title>Uluka – Key Generator</title>
     <style>
-        body {
-            background: #060D1A;
-            color: #e0e0e0;
-            font-family: 'Courier New', monospace;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            background: #0C1830;
-            border: 1px solid #1A304A;
-            border-radius: 12px;
-            padding: 40px;
-            width: 100%;
-            max-width: 480px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.8);
-        }
-        h1 {
-            color: #F0B429;
-            text-align: center;
-            letter-spacing: 2px;
-            font-size: 22px;
-            margin-top: 0;
-            margin-bottom: 30px;
-        }
-        label {
-            display: block;
-            margin-top: 16px;
-            font-size: 11px;
-            color: #8899BB;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-        input, select {
-            width: 100%;
-            padding: 12px;
-            background: #060D1A;
-            border: 1px solid #1A304A;
-            border-radius: 6px;
-            color: #ffffff;
-            font-size: 14px;
-            box-sizing: border-box;
-            margin-top: 4px;
-        }
-        input:focus, select:focus {
-            border-color: #F0B429;
-            outline: none;
-        }
-        button {
-            width: 100%;
-            padding: 14px;
-            background: #F0B429;
-            border: none;
-            border-radius: 6px;
-            color: #060D1A;
-            font-weight: bold;
-            font-size: 16px;
-            cursor: pointer;
-            margin-top: 24px;
-            letter-spacing: 2px;
-            transition: background 0.2s;
-        }
-        button:hover {
-            background: #d19b1f;
-        }
-        #result {
-            margin-top: 24px;
-            padding: 16px;
-            border-radius: 6px;
-            background: #060D1A;
-            border: 1px solid #1A304A;
-            word-break: break-all;
-            font-size: 14px;
-            display: none;
-        }
-        #result.success {
-            border-color: #00FF88;
-            display: block;
-        }
-        #result.error {
-            border-color: #FF5555;
-            display: block;
-        }
-        .key-highlight {
-            color: #F0B429;
-            font-weight: bold;
-            font-size: 18px;
-            background: #0C1830;
-            padding: 8px 12px;
-            border-radius: 4px;
-            display: inline-block;
-        }
-        .footer {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 10px;
-            color: #334466;
-        }
-        .subtitle {
-            text-align: center;
-            color: #8899BB;
-            font-size: 12px;
-            margin-top: -10px;
-            margin-bottom: 10px;
-        }
+        body { background: #060D1A; color: #e0e0e0; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .container { background: #0C1830; border: 1px solid #1A304A; border-radius: 12px; padding: 40px; width: 100%; max-width: 480px; box-shadow: 0 8px 30px rgba(0,0,0,0.8); }
+        h1 { color: #F0B429; text-align: center; letter-spacing: 2px; font-size: 22px; margin-top: 0; margin-bottom: 30px; }
+        label { display: block; margin-top: 16px; font-size: 11px; color: #8899BB; letter-spacing: 1px; text-transform: uppercase; }
+        input, select { width: 100%; padding: 12px; background: #060D1A; border: 1px solid #1A304A; border-radius: 6px; color: #ffffff; font-size: 14px; box-sizing: border-box; margin-top: 4px; }
+        input:focus, select:focus { border-color: #F0B429; outline: none; }
+        button { width: 100%; padding: 14px; background: #F0B429; border: none; border-radius: 6px; color: #060D1A; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 24px; letter-spacing: 2px; transition: background 0.2s; }
+        button:hover { background: #d19b1f; }
+        #result { margin-top: 24px; padding: 16px; border-radius: 6px; background: #060D1A; border: 1px solid #1A304A; word-break: break-all; font-size: 14px; display: none; }
+        #result.success { border-color: #00FF88; display: block; }
+        #result.error { border-color: #FF5555; display: block; }
+        .key-highlight { color: #F0B429; font-weight: bold; font-size: 18px; background: #0C1830; padding: 8px 12px; border-radius: 4px; display: inline-block; }
+        .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #334466; }
+        .subtitle { text-align: center; color: #8899BB; font-size: 12px; margin-top: -10px; margin-bottom: 10px; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>🦉 ULUKA ULTRA</h1>
+    <h1>🦉 ULUKA SYSTEM</h1>
     <div class="subtitle">One‑Click Key Generator</div>
 
     <form id="keyForm">
+        <label>Product Type *</label>
+        <select id="product_type" onchange="toggleFields()">
+            <option value="forex">Uluka Ultra (Forex EA)</option>
+            <option value="crypto">Uluka Ultima (Crypto Bot)</option>
+        </select>
+
         <label>Client Name *</label>
         <input type="text" id="client_name" placeholder="e.g. John Doe" required>
 
-        <label>Subscription</label>
-        <select id="subscription">
-            <option value="PRO">PRO</option>
-            <option value="PREMIUM">PREMIUM</option>
-            <option value="TRIAL">TRIAL</option>
-            <option value="PAYE">PAYE</option>
-        </select>
+        <div id="forex_fields">
+            <label>Subscription</label>
+            <select id="subscription">
+                <option value="PRO">PRO</option>
+                <option value="PREMIUM">PREMIUM</option>
+                <option value="TRIAL">TRIAL</option>
+                <option value="PAYE">PAYE</option>
+            </select>
+
+            <label>Equity Cap ($)</label>
+            <input type="number" id="equity_cap" placeholder="0 (no cap)" value="0">
+        </div>
 
         <label>Expiry Date *</label>
         <input type="date" id="expires_on" required>
-
-                <label>Equity Cap ($)</label>
-        <input type="number" id="equity_cap" placeholder="0 (no cap)" value="0">
 
         <label>Client Email (for reports)</label>
         <input type="email" id="email" placeholder="client@example.com">
@@ -2213,17 +2148,28 @@ app.get('/admin/generate', (req, res) => {
     </form>
 
     <div id="result"></div>
-    <div class="footer">Secured · Uluka Ultra v2.5</div>
+    <div class="footer">Secured · Uluka v2.6</div>
 </div>
 
 <script>
+    function toggleFields() {
+        const type = document.getElementById('product_type').value;
+        const forexFields = document.getElementById('forex_fields');
+        if (type === 'crypto') {
+            forexFields.classList.add('hidden');
+        } else {
+            forexFields.classList.remove('hidden');
+        }
+    }
+
     document.getElementById('keyForm').addEventListener('submit', async (e) => {
         e.preventDefault();
 
+        const product_type = document.getElementById('product_type').value;
         const client_name = document.getElementById('client_name').value.trim();
         const subscription = document.getElementById('subscription').value;
         const expires_on = document.getElementById('expires_on').value;
-                const equity_cap = parseFloat(document.getElementById('equity_cap').value) || 0;
+        const equity_cap = parseFloat(document.getElementById('equity_cap').value) || 0;
         const email = document.getElementById('email').value.trim();
         const admin_secret = document.getElementById('admin_secret').value.trim();
 
@@ -2245,7 +2191,8 @@ app.get('/admin/generate', (req, res) => {
                     'Content-Type': 'application/json',
                     'x-admin-secret': admin_secret
                 },
-                                body: JSON.stringify({
+                body: JSON.stringify({
+                    product_type,
                     client_name,
                     subscription,
                     expires_on,
@@ -2258,14 +2205,31 @@ app.get('/admin/generate', (req, res) => {
 
             if (response.ok && data.success) {
                 resultDiv.className = 'success';
+                
+                let detailsHtml = '';
+                if (data.is_crypto) {
+                    // Adjust for Crypto response format
+                    const expDate = new Date(data.licence.expiry_date).toLocaleDateString('en-GB');
+                    detailsHtml = \`
+                        <b>Client:</b> \${data.licence.client_name}<br>
+                        <b>Expires:</b> \${expDate}<br>
+                        <b>Type:</b> Crypto Bot
+                    \`;
+                } else {
+                    // Adjust for Forex response format
+                    const expDate = new Date(data.licence.expires_on).toLocaleDateString('en-GB');
+                    detailsHtml = \`
+                        <b>Client:</b> \${data.licence.client_name}<br>
+                        <b>Plan:</b> \${data.licence.subscription}<br>
+                        <b>Expires:</b> \${expDate}<br>
+                        <b>Cap:</b> $\${data.licence.equity_cap}
+                    \`;
+                }
+
                 resultDiv.innerHTML = \`
                     ✅ <b>Key Generated!</b><br><br>
                     <span class="key-highlight">\${data.licence.licence_key}</span><br><br>
-                    <b>Client:</b> \${data.licence.client_name}<br>
-                    <b>Plan:</b> \${data.licence.subscription}<br>
-                    <b>Expires:</b> \${data.licence.expires_on}<br>
-                    <b>Cap:</b> $\${data.licence.equity_cap}<br>
-                    <b>Email:</b> \${data.licence.email || '(not set)'}
+                    \${detailsHtml}
                 \`;
             } else {
                 resultDiv.className = 'error';
