@@ -1314,17 +1314,29 @@ app.post('/sync', (req, res) => {
     res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 0, news_filter: 'ON' });
 });
 
-// ─── ROUTE 4: GET /sync ─────────────────────────────────────
-app.get('/sync', (req, res) => {
-    res.json({ 
-        kill_switch: 'OFF', 
-        multiplier: 1.0, 
-        min_confidence: 0,   // <-- set to 0 to disable cloud override
-        high_news_block: highImpactUSDBlock ? 'ON' : 'OFF',
-        medium_news_block: mediumImpactUSDBlock ? 'ON' : 'OFF'
-    });
-});
+// ─── ROUTE 4: GET /sync (Cloud Sync) ───────────────────────
+app.get('/sync', async (req, res) => {
+    try {
+        const configResult = await pool.query('SELECT key, value FROM config');
+        
+        let configData = { 
+            kill_switch: 'OFF', 
+            multiplier: 1.0, 
+            min_confidence: 0, 
+            news_filter: 'ON'
+        };
 
+        configResult.rows.forEach(row => {
+            if (row.key === 'kill_switch') configData.kill_switch = row.value;
+            if (row.key === 'multiplier') configData.multiplier = parseFloat(row.value);
+            if (row.key === 'min_confidence') configData.min_confidence = parseFloat(row.value);
+        });
+
+        res.json(configData);
+    } catch (e) {
+        res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 0, news_filter: 'ON' });
+    }
+});
 // ─── ROUTE 5: TRADE SIGNAL ──────────────────────────────────
 app.post('/hoot', async (req, res) => {
     try {
