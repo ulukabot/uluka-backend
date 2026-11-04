@@ -6133,10 +6133,22 @@ app.get('/api/crypto/active-users', async (req, res) => {
 app.post('/api/crypto/update-equity', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
     const { account_id, peak, daily_start } = req.body;
+    
     try {
+        // 1. Update crypto_users (Master)
         await pool.query(`
             UPDATE crypto_users SET peak_equity = $1, daily_start_equity = $2 WHERE account_id = $3
         `, [peak, daily_start, account_id]);
+
+        // 2. Update crypto_clients (Clients)
+        try {
+            await pool.query(`
+                UPDATE crypto_clients SET peak_equity = $1, daily_start_equity = $2 WHERE account_id = $3
+            `, [peak, daily_start, account_id]);
+        } catch (e) {
+            // Ignore if table doesn't exist or column missing
+        }
+
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
