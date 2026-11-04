@@ -6102,14 +6102,28 @@ app.post('/api/crypto/close-trade', async (req, res) => {
     }
 });
 
-// ─── CRYPTO SAAS: Fetch Active Users (For the Crypto Bot) ──────────
+// ─── CRYPTO SAAS: Fetch Active Users (Combines Master and Clients) ──────────
 app.get('/api/crypto/active-users', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-        const result = await pool.query(`SELECT * FROM crypto_users WHERE status = 'ACTIVE'`);
-        res.json(result.rows);
+        // 1. Fetch the Master from crypto_users
+        const usersRes = await pool.query(`SELECT * FROM crypto_users WHERE status = 'ACTIVE'`);
+        
+        // 2. Fetch the Clients from crypto_clients (if the table exists)
+        let clients = [];
+        try {
+            const clientsRes = await pool.query(`SELECT * FROM crypto_clients WHERE status = 'ACTIVE'`);
+            clients = clientsRes.rows;
+        } catch (e) {
+            console.log("No crypto_clients table found, or query failed. Only using crypto_users.");
+        }
+
+        // 3. Combine them into one array
+        const allActive = [...usersRes.rows, ...clients];
+        
+        res.json(allActive);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
