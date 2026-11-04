@@ -552,8 +552,38 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
 async function closeTrade(user, index, pos, closePrice, reason, bybit) {
   let pnl = pos.side === 'Buy' ? (closePrice - pos.entryPrice) * pos.qty : (pos.entryPrice - closePrice) * pos.qty;
   
+  // ✅ Update local DB (if you have a local db for the bot)
   await db.logTradeClose(pos.dbId, closePrice, pnl, reason);
 
+  // ✅ NEW: If this is a client (not master), send the close to the backend
+  if (!user.is_master) {
+      try {
+          const RAILWAY_URL = 'https://uluka-backend-production.up.railway.app';
+          const response = await fetch(`${RAILWAY_URL}/api/crypto/close-trade`, {
+              method: 'POST',
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'x-admin-secret': process.env.ADMIN_SECRET // Ensure this is in your .env
+              },
+              body: JSON.stringify({
+                  account_id: user.account_id,
+                  master_ticket: pos.dbId, // Links back to the master trade ID
+                  exit_price: closePrice,
+                  pnl_usd: parseFloat(pnl.toFixed(2))
+              })
+          });
+          
+          if (response.ok) {
+              console.log(`📡 Reported CLOSED trade to backend for ${user.account_id} | PnL: $${pnl.toFixed(2)}`);
+          } else {
+              console.error(`❌ Backend rejected close sync for ${user.account_id}`);
+          }
+      } catch (err) {
+          console.error(`❌ Failed to report close to backend:`, err.message);
+      }
+  }
+
+  // ✅ Your existing logic (cooldowns, DNA, etc)
   if (pnl >= 0) {
     consecutiveLosses[user.account_id] = 0;
   } else {
@@ -568,6 +598,7 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
 
   console.log(`\n[${now()}] 🔴 TRADE CLOSED: ${user.account_id} | ${pos.symbol} | PnL: $${pnl.toFixed(2)}`);
 
+  // ✅ If Master, send telegram webhook
   if (user.is_master && process.env.IS_MASTER === 'true') {
     await tg.sendWebhook({ 
       type: 'TRADE_CLOSE', source: 'MASTER', asset_class: 'CRYPTO', 
@@ -576,9 +607,9 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
     });
   }
   
+  // ✅ Remove from memory
   openPositions[user.account_id].splice(index, 1);
 }
-
 // 📊 LIQUIDITY CHECK FUNCTION (Inline)
 async function checkLiquidity(bybit, symbol, tradeSide, currentPrice) {
   try {
