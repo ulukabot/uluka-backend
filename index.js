@@ -1248,7 +1248,7 @@ ${directionEmoji} <b>${directionLabel}</b> on <code>${d.symbol || '—'}</code>
 
     return { premiumMsg, freeMsg };
 }
-// ─── ROUTE 1: LEGACY GET ────────────────────────────────────
+// ─── ROUTE 1: LEGACY GET (EA Cloud Sync) ────────────────────
 app.get('/', async (req, res) => {
     try {
         const type = req.query.type;
@@ -1268,14 +1268,34 @@ app.get('/', async (req, res) => {
             return res.status(result.status).send(result.body);
         }
         
-        // ✅ FIX: Return JSON immediately so MT5 doesn't timeout waiting for a string
-        console.log('ℹ️ Returning Config for MT5');
-        return res.json({ 
-            status: "ok", 
-            multiplier: "1.0", 
-            min_confidence: "0",
-            kill_switch: "OFF"
-        });
+        // ✅ DYNAMIC CONFIG WITH SAFE DEFAULTS
+        if (type === 'get_config') {
+            try {
+                const configResult = await pool.query('SELECT key, value FROM config');
+                
+                // Default values (in case DB rows are missing)
+                let configData = { 
+                    status: "ok",
+                    multiplier: "1.0", 
+                    min_confidence: "0", 
+                    kill_switch: "OFF" 
+                };
+
+                // Overwrite defaults with DB values
+                configResult.rows.forEach(row => {
+                    configData[row.key] = row.value;
+                });
+
+                console.log('ℹ️ Returning Config for MT5:', configData);
+                return res.json(configData);
+                
+            } catch (dbErr) {
+                console.error('🔥 Config DB Error:', dbErr.message);
+                return res.json({ status: "ok", multiplier: "1.0", min_confidence: "0", kill_switch: "OFF" });
+            }
+        }
+        
+        return res.send('OK');
         
     } catch (err) {
         console.error('🔥 Root route error:', err.message);
