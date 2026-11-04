@@ -5938,6 +5938,31 @@ app.post('/api/crypto/register', async (req, res) => {
     }
 });
 
+// ─── CRYPTO SAAS: Fetch Tradable Assets ───
+app.get('/api/crypto/assets', async (req, res) => {
+    try {
+        // Fetch all linear (USDT perp) pairs from Bybit
+        const response = await fetch('https://api.bybit.com/v5/market/instruments-info?category=linear');
+        const data = await response.json();
+        
+        if (data.result && data.result.list) {
+            // Filter only USDT pairs that are actively trading
+            const assets = data.result.list
+                .filter(s => s.symbol.endsWith('USDT') && s.status === 'Trading')
+                .map(s => s.symbol);
+                
+            // Sort alphabetically for the UI
+            assets.sort();
+            
+            return res.json({ success: true, assets: assets });
+        }
+        res.status(500).json({ error: 'Failed to fetch assets from Bybit' });
+    } catch (err) {
+        console.error('🔥 Crypto assets fetch error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // 2. VALIDATE LICENCE (Called by Crypto Bot before trading)
 app.post('/api/crypto/validate', async (req, res) => {
     const { account_id, licence_key } = req.body;
