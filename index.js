@@ -1251,8 +1251,6 @@ ${directionEmoji} <b>${directionLabel}</b> on <code>${d.symbol || '—'}</code>
 // ─── ROUTE 1: LEGACY GET ────────────────────────────────────
 app.get('/', async (req, res) => {
     try {
-        console.log('✅ Root route hit!');
-        
         const type = req.query.type;
 
         if (type === 'validate') {
@@ -1270,12 +1268,18 @@ app.get('/', async (req, res) => {
             return res.status(result.status).send(result.body);
         }
         
-        console.log('ℹ️ Returning OK (no validate)');
-        return res.send('OK');
+        // ✅ FIX: Return JSON immediately so MT5 doesn't timeout waiting for a string
+        console.log('ℹ️ Returning Config for MT5');
+        return res.json({ 
+            status: "ok", 
+            multiplier: "1.0", 
+            min_confidence: "0",
+            kill_switch: "OFF"
+        });
+        
     } catch (err) {
         console.error('🔥 Root route error:', err.message);
-        console.error(err.stack);
-        res.status(500).send('Internal Server Error: ' + err.message);
+        res.status(500).send('Internal Server Error');
     }
 });
 
