@@ -6102,29 +6102,17 @@ app.post('/api/crypto/close-trade', async (req, res) => {
     }
 });
 
-// ─── CRYPTO SAAS: Fetch Active Users (Combines Master and Clients) ──────────
+// ─── CRYPTO SAAS: Fetch Active Users ──────────
 app.get('/api/crypto/active-users', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-        // 1. Fetch the Master from crypto_users
-        const usersRes = await pool.query(`SELECT * FROM crypto_users WHERE status = 'ACTIVE'`);
-        
-        // 2. Fetch the Clients from crypto_clients (if the table exists)
-        let clients = [];
-        try {
-            const clientsRes = await pool.query(`SELECT * FROM crypto_clients WHERE status = 'ACTIVE'`);
-            clients = clientsRes.rows;
-        } catch (e) {
-            console.log("No crypto_clients table found, or query failed. Only using crypto_users.");
-        }
-
-        // 3. Combine them into one array
-        const allActive = [...usersRes.rows, ...clients];
-        
-        res.json(allActive);
+        // Fetch everyone (Master and Clients) from crypto_users
+        const result = await pool.query(`SELECT * FROM crypto_users WHERE status = 'ACTIVE'`);
+        res.json(result.rows);
     } catch (err) {
+        console.error("❌ Error fetching active users:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -6135,22 +6123,21 @@ app.post('/api/crypto/update-equity', async (req, res) => {
     const { account_id, peak, daily_start } = req.body;
     
     try {
-        // 1. Update crypto_users (Master)
+        // ─── CRYPTO SAAS: Update Peak Equity (For Risk Management) ───
+app.post('/api/crypto/update-equity', async (req, res) => {
+    if (req.headers['x-admin-secret'] !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+    const { account_id, peak, daily_start } = req.body;
+    
+    try {
         await pool.query(`
-            UPDATE crypto_users SET peak_equity = $1, daily_start_equity = $2 WHERE account_id = $3
+            UPDATE crypto_users 
+            SET peak_equity = $1, daily_start_equity = $2 
+            WHERE account_id = $3
         `, [peak, daily_start, account_id]);
-
-        // 2. Update crypto_clients (Clients)
-        try {
-            await pool.query(`
-                UPDATE crypto_clients SET peak_equity = $1, daily_start_equity = $2 WHERE account_id = $3
-            `, [peak, daily_start, account_id]);
-        } catch (e) {
-            // Ignore if table doesn't exist or column missing
-        }
 
         res.json({ success: true });
     } catch (err) {
+        console.error("❌ Error updating equity:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
