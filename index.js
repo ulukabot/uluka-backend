@@ -6117,12 +6117,6 @@ app.get('/api/crypto/active-users', async (req, res) => {
     }
 });
 
-// ─── CRYPTO SAAS: Update Peak Equity (For Risk Management) ───
-app.post('/api/crypto/update-equity', async (req, res) => {
-    if (req.headers['x-admin-secret'] !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-    const { account_id, peak, daily_start } = req.body;
-    
-    try {
         // ─── CRYPTO SAAS: Update Peak Equity (For Risk Management) ───
 app.post('/api/crypto/update-equity', async (req, res) => {
     if (req.headers['x-admin-secret'] !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
