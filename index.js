@@ -5972,6 +5972,38 @@ const {
     }
 });
 
+// ─── CRYPTO SAAS: Update Existing Settings ───
+app.post('/api/crypto/update-settings', async (req, res) => {
+    const { account_id, risk_percent, max_trades_per_symbol, max_total_trades, symbols } = req.body;
+
+    if (!account_id) {
+        return res.status(400).json({ error: 'Missing account_id' });
+    }
+
+    try {
+        await pool.query(`
+            UPDATE crypto_users 
+            SET 
+                risk_percent = COALESCE($1, risk_percent),
+                max_trades_per_symbol = COALESCE($2, max_trades_per_symbol),
+                max_total_trades = COALESCE($3, max_total_trades),
+                symbols = COALESCE($4, symbols)
+            WHERE account_id = $5
+        `, [
+            risk_percent ? parseFloat(risk_percent) : null,
+            max_trades_per_symbol ? parseInt(max_trades_per_symbol) : null,
+            max_total_trades ? parseInt(max_total_trades) : null,
+            symbols || null,
+            account_id
+        ]);
+
+        res.json({ success: true, message: 'Settings updated successfully.' });
+    } catch (err) {
+        console.error('🔥 Crypto update-settings error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ─── CRYPTO SAAS: Fetch Tradable Assets ───
 app.get('/api/crypto/assets', async (req, res) => {
     try {
