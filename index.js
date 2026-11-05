@@ -5903,9 +5903,14 @@ function decryptKey(text) {
 }
 
 // 1. REGISTER NEW CRYPTO CLIENT
-app.post('/api/crypto/register', async (req, res) => {
-    const { account_id, client_name, licence_key, telegram_id, api_key, api_secret, risk_percent, max_drawdown } = req.body;
-    
+const {
+  account_id, client_name, licence_key, telegram_id,
+  api_key, api_secret,
+  risk_percent, max_drawdown,
+  exchange_name, symbols,
+  max_trades_per_symbol, max_total_trades
+} = req.body;
+
     if (!account_id || !licence_key || !api_key || !api_secret) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -5928,20 +5933,36 @@ app.post('/api/crypto/register', async (req, res) => {
         const encApiKey = encryptKey(api_key);
         const encApiSecret = encryptKey(api_secret);
 
-        // Update the row directly by licence_key
         await pool.query(`
-            UPDATE crypto_users 
-            SET 
-                account_id = $1, 
-                client_name = $2, 
-                telegram_id = $3, 
-                api_key = $4, 
-                api_secret = $5, 
-                risk_percent = $6, 
-                max_drawdown = $7, 
-                status = 'ACTIVE'
-            WHERE licence_key = $8
-        `, [account_id, client_name || 'Crypto Client', telegram_id, encApiKey, encApiSecret, risk_percent || 1.0, max_drawdown || 10.0, licence_key]);
+    UPDATE crypto_users 
+    SET 
+        account_id = $1, 
+        client_name = $2, 
+        telegram_id = $3, 
+        api_key = $4, 
+        api_secret = $5, 
+        risk_percent = $6, 
+        max_drawdown = $7, 
+        exchange_name = $8,
+        symbols = $9,
+        max_trades_per_symbol = $10,
+        max_total_trades = $11,
+        status = 'ACTIVE'
+    WHERE licence_key = $12
+`, [
+    account_id,
+    client_name || 'Crypto Client',
+    telegram_id,
+    encApiKey,
+    encApiSecret,
+    risk_percent || 1.0,
+    max_drawdown || 10.0,
+    exchange_name || 'bybit',
+    symbols || '',
+    parseInt(max_trades_per_symbol) || 1,
+    parseInt(max_total_trades) || 5,
+    licence_key
+]);
 
         res.json({ success: true, message: 'Client registered securely.' });
     } catch (err) {
