@@ -5903,6 +5903,7 @@ function decryptKey(text) {
 }
 
 // 1. REGISTER NEW CRYPTO CLIENT
+app.post('/api/crypto/register', async (req, res) => {
 const {
   account_id, client_name, licence_key, telegram_id,
   api_key, api_secret,
