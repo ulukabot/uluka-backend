@@ -249,12 +249,26 @@ async function runTick() {
         continue;
     }
 
-    // Build Master Plan
+        // Build Master Plan
     try {
         const balData = await masterBybit.getBalance();
-        const totalEquity = parseFloat(balData.list[0]?.totalEquity || 0);
-        const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
-        const equity = totalEquity > 0 ? totalEquity : parseFloat(usdt?.equity || 0);
+        
+        // ✅ THE CRASH FIX: Safely extract equity based on the format returned
+        let equity = 0;
+        if (balData && balData.list && balData.list.length > 0) {
+            // Raw Bybit API format
+            const totalEquity = parseFloat(balData.list[0]?.totalEquity || 0);
+            const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
+            equity = totalEquity > 0 ? totalEquity : parseFloat(usdt?.equity || 0);
+        } else if (balData) {
+            // Custom getBalance() format from your lib/bybit.js
+            equity = parseFloat(balData.totalEquity || balData.availableMargin || 0);
+        }
+
+        if (equity <= 0) {
+            console.log(`⏭️ Skipping ${symbol}: Master account balance is $0.`);
+            continue; // Skips this symbol and moves to the next
+        }
 
         const masterPlan = tradeEngine.buildTradePlan(symbol, signal, currentPrice, klines, info, equity, config);
 
