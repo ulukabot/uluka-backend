@@ -443,12 +443,19 @@ async function closeTrade(user, index, pos, closePrice, reason, bybit) {
 
   console.log(`\n[${now()}] 🔴 TRADE CLOSED: ${user.account_id} | ${pos.symbol} | PnL: $${pnl.toFixed(2)}`);
 
+   // ✅ Calculate % return based on account balance
+  const accountBalance = user.current_balance || 8500; // Fallback to 8500 if missing
+  const profitPercent = (pnl / accountBalance) * 100;
+  const pnlPercentStr = (profitPercent >= 0 ? '+' : '') + profitPercent.toFixed(2) + '%';
+
   // ✅ If Master, send telegram webhook
   if (user.is_master && process.env.IS_MASTER === 'true') {
     await tg.sendWebhook({ 
       type: 'TRADE_CLOSE', source: 'MASTER', asset_class: 'CRYPTO', 
       result: pnl >= 0 ? 'WIN' : 'LOSS', symbol: pos.symbol, direction: pos.side.toUpperCase(), 
-      profit: pnl.toFixed(2), reason: reason, ticket: pos.dbId, time: now() 
+      profit: pnl.toFixed(2), 
+      profit_percent: pnlPercentStr, // ✅ ADD THIS LINE
+      reason: reason, ticket: pos.dbId, time: now() 
     });
   }
   
