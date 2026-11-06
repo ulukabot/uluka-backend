@@ -64,8 +64,9 @@ const pool = new Pool({
 
 // If your tables are named differently, change them here:
 const PUBLIC_TRADE_TABLES = {
-  forex:  'trade_log',
-  crypto: 'crypto_trades'      
+  forex:  { tables: ['trade_log'] },
+  crypto: { tables: ['crypto_client_trades', 'crypto_trades'],
+            statusColumn: 'status', statusValue: 'CLOSED' }
 };
 
 // --- helpers ---
@@ -88,28 +89,57 @@ function ulukaNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
-async function ulukaFetchTrades(productKey, limit) {
-  const table = PUBLIC_TRADE_TABLES[productKey];
-  if (!table) return [];
+async function ulukaFetchTrades(productKey, limit, masterOnly) {
+  const cfg = PUBLIC_TRADE_TABLES[productKey];
+  if (!cfg) return [];
 
-  const columns = await ulukaGetColumns(table);
-  if (!columns.length) {
-    console.warn(`[public/trades] table "${table}" not found — skipping`);
+  // Find which table actually exists
+  let table = null, columns = null;
+  for (const t of cfg.tables) {
+    const cols = await ulukaGetColumns(t);
+    if (cols.length) { table = t; columns = cols; break; }
+  }
+  if (!table) {
+    console.warn(`[public/trades] no table found for ${productKey} — tried: ${cfg.tables.join(', ')}`);
     return [];
   }
+  console.log(`[public/trades] ${productKey} → using table "${table}"`);
 
   const dateCol   = ulukaPick(columns, ['closed_at','close_time','closed_time','updated_at','created_at','open_time','time','date']);
   const symbolCol = ulukaPick(columns, ['symbol','pair','instrument','ticker']);
-  const sideCol   = ulukaPick(columns, ['side','type','direction','order_type','cmd']);
-  const profitCol = ulukaPick(columns, ['profit','pnl','net_profit','profit_usd','result']);
-  const pctCol    = ulukaPick(columns, ['profit_percent','profit_pct','pnl_percent','percentage','roi']);
+  const sideCol   = ulukaPick(columns, ['side','type','direction','order_type','cmd','deal_type','action','trade_type','position_type']);
+  const profitCol = ulukaPick(columns, ['profit','pnl','net_profit','profit_usd','result','realized_pnl','pnl_usd','profit_loss','gain','return_usd','usd_profit']);
+  const pctCol    = ulukaPick(columns, ['profit_percent','profit_pct','pnl_percent','pnl_pct','percentage','roi']);
   const idCol     = ulukaPick(columns, ['ticket','trade_id','order_id','deal_id','id']);
+  const acctCol   = ulukaPick(columns, ['account_id','user_id','client_id']);
 
-  const orderBy = dateCol ? `ORDER BY "${dateCol}" DESC NULLS LAST` : '';
-  const r = await pool.query(
-    `SELECT * FROM "${table}" ${orderBy} LIMIT $1`,
-    [limit]
-  );
+  const where = [], params = [];
+
+  // Status filter (crypto only — filter out open trades)
+  if (cfg.statusColumn && columns.includes(cfg.statusColumn)) {
+    params.push(cfg.statusValue);
+    where.push(`t."${cfg.statusColumn}" = $${params.length}`);
+  }
+
+  // Master-only filter (crypto only — prevents showing every client's copy of the same trade)
+  let joinClause = '';
+  if (masterOnly && productKey === 'crypto' && acctCol) {
+    try {
+      const userCols = await ulukaGetColumns('crypto_users');
+      if (userCols.includes('is_master') && userCols.includes('account_id')) {
+        joinClause = `LEFT JOIN crypto_users u ON u.account_id = t."${acctCol}"`;
+        where.push(`(u.is_master = true OR u.is_master IS NULL)`);
+      }
+    } catch (e) { console.warn('[public/trades] master filter skipped:', e.message); }
+  }
+
+  const orderBy = dateCol ? `ORDER BY t."${dateCol}" DESC NULLS LAST` : '';
+  const sql = `SELECT t.* FROM "${table}" t ${joinClause}
+               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+               ${orderBy} LIMIT $${params.length + 1}`;
+  params.push(limit);
+
+  const r = await pool.query(sql, params);
 
   return r.rows.map(row => ({
     id:             idCol     ? String(row[idCol]) : null,
@@ -129,6 +159,7 @@ app.get('/api/public/trades', async (req, res) => {
     const product = ['forex', 'crypto', 'combined'].includes(reqProduct) ? reqProduct : 'combined';
 
     let limit = parseInt(req.query.limit, 10);
+        const masterOnly = req.query.master !== '0'; // default: master trades only (turn off with ?master=0)
     if (!Number.isFinite(limit) || limit <= 0) limit = 50;
     limit = Math.min(limit, 500); // hard cap
 
@@ -136,14 +167,14 @@ app.get('/api/public/trades', async (req, res) => {
 
     if (product === 'combined') {
       const [fx, cr] = await Promise.all([
-        ulukaFetchTrades('forex',  limit).catch(e => { console.error('[public/trades] forex:', e.message);  return []; }),
-        ulukaFetchTrades('crypto', limit).catch(e => { console.error('[public/trades] crypto:', e.message); return []; })
+        ulukaFetchTrades('forex',  limit, masterOnly).catch(e => { console.error('[public/trades] forex:', e.message);  return []; }),
+        ulukaFetchTrades('crypto', limit, masterOnly).catch(e => { console.error('[public/trades] crypto:', e.message); return []; })
       ]);
       trades = [...fx, ...cr];
       trades.sort((a, b) => new Date(b.closed_at || 0) - new Date(a.closed_at || 0));
       trades = trades.slice(0, limit);
     } else {
-      trades = await ulukaFetchTrades(product, limit);
+      trades = await trades = await ulukaFetchTrades(product, limit, masterOnly);
     }
 
     const wins     = trades.filter(t => t.profit > 0).length;
