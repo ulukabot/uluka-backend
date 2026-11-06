@@ -57,6 +57,121 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
+// ============================================================
+// ULUKA — PUBLIC TRADES API (for PDF Statement Generator)
+// GET /api/public/trades?product=forex|crypto|combined&limit=50
+// ============================================================
+
+// If your tables are named differently, change them here:
+const PUBLIC_TRADE_TABLES = {
+  forex:  'trade_log',
+  crypto: 'crypto_client_trades'
+};
+
+// --- helpers ---
+async function ulukaGetColumns(table) {
+  const r = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1`,
+    [table]
+  );
+  return r.rows.map(x => x.column_name);
+}
+
+function ulukaPick(columns, candidates) {
+  for (const c of candidates) if (columns.includes(c)) return c;
+  return null;
+}
+
+function ulukaNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function ulukaFetchTrades(productKey, limit) {
+  const table = PUBLIC_TRADE_TABLES[productKey];
+  if (!table) return [];
+
+  const columns = await ulukaGetColumns(table);
+  if (!columns.length) {
+    console.warn(`[public/trades] table "${table}" not found — skipping`);
+    return [];
+  }
+
+  const dateCol   = ulukaPick(columns, ['closed_at','close_time','closed_time','updated_at','created_at','open_time','time','date']);
+  const symbolCol = ulukaPick(columns, ['symbol','pair','instrument','ticker']);
+  const sideCol   = ulukaPick(columns, ['side','type','direction','order_type','cmd']);
+  const profitCol = ulukaPick(columns, ['profit','pnl','net_profit','profit_usd','result']);
+  const pctCol    = ulukaPick(columns, ['profit_percent','profit_pct','pnl_percent','percentage','roi']);
+  const idCol     = ulukaPick(columns, ['ticket','trade_id','order_id','deal_id','id']);
+
+  const orderBy = dateCol ? `ORDER BY "${dateCol}" DESC NULLS LAST` : '';
+  const r = await pool.query(
+    `SELECT * FROM "${table}" ${orderBy} LIMIT $1`,
+    [limit]
+  );
+
+  return r.rows.map(row => ({
+    id:             idCol     ? String(row[idCol]) : null,
+    product:        productKey,
+    symbol:         symbolCol ? String(row[symbolCol] ?? '—') : '—',
+    side:           sideCol   ? String(row[sideCol] ?? '—').toUpperCase() : '—',
+    profit:         ulukaNum(profitCol ? row[profitCol] : 0),
+    profit_percent: ulukaNum(pctCol    ? row[pctCol]    : 0),
+    closed_at:      (dateCol && row[dateCol]) ? new Date(row[dateCol]).toISOString() : null
+  }));
+}
+
+// --- the route ---
+app.get('/api/public/trades', async (req, res) => {
+  try {
+    const reqProduct = String(req.query.product || 'combined').toLowerCase();
+    const product = ['forex', 'crypto', 'combined'].includes(reqProduct) ? reqProduct : 'combined';
+
+    let limit = parseInt(req.query.limit, 10);
+    if (!Number.isFinite(limit) || limit <= 0) limit = 50;
+    limit = Math.min(limit, 500); // hard cap
+
+    let trades = [];
+
+    if (product === 'combined') {
+      const [fx, cr] = await Promise.all([
+        ulukaFetchTrades('forex',  limit).catch(e => { console.error('[public/trades] forex:', e.message);  return []; }),
+        ulukaFetchTrades('crypto', limit).catch(e => { console.error('[public/trades] crypto:', e.message); return []; })
+      ]);
+      trades = [...fx, ...cr];
+      trades.sort((a, b) => new Date(b.closed_at || 0) - new Date(a.closed_at || 0));
+      trades = trades.slice(0, limit);
+    } else {
+      trades = await ulukaFetchTrades(product, limit);
+    }
+
+    const wins     = trades.filter(t => t.profit > 0).length;
+    const losses   = trades.filter(t => t.profit < 0).length;
+    const totalPnl = trades.reduce((s, t) => s + t.profit, 0);
+    const totalPct = trades.reduce((s, t) => s + t.profit_percent, 0);
+
+    res.json({
+      success: true,
+      product,
+      limit,
+      count: trades.length,
+      stats: {
+        trades:         trades.length,
+        wins,
+        losses,
+        winRate:        trades.length ? Number(((wins / trades.length) * 100).toFixed(1)) : 0,
+        totalPnl:       Number(totalPnl.toFixed(2)),
+        totalPnlPercent: Number(totalPct.toFixed(2))
+      },
+      trades
+    });
+  } catch (err) {
+    console.error('GET /api/public/trades error:', err);
+    res.status(500).json({ success: false, error: 'Failed to load trades' });
+  }
+});
+
 // ─── Environment Variables ─────────────────────────────────
 const DEFAULT_PAYEE_LIMIT = process.env.DEFAULT_PAYEE_LIMIT || 5000;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
