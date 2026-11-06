@@ -105,7 +105,8 @@ async function ulukaFetchTrades(productKey, limit, masterOnly) {
   }
   console.log(`[public/trades] ${productKey} → using table "${table}"`);
 
-  const dateCol   = ulukaPick(columns, ['closed_at','close_time','closed_time','updated_at','created_at','open_time','time','date']);
+  const dateCol      = ulukaPick(columns, ['closed_at','close_time','closed_time']);
+  const dateFallback = ulukaPick(columns, ['opened_at','open_time','created_at','updated_at','time','date']);
   const symbolCol = ulukaPick(columns, ['symbol','pair','instrument','ticker']);
   const sideCol   = ulukaPick(columns, ['side','type','direction','order_type','cmd','deal_type','action','trade_type','position_type']);
   const profitCol = ulukaPick(columns, ['profit','pnl','net_profit','profit_usd','result','realized_pnl','pnl_usd','profit_loss','gain','return_usd','usd_profit']);
@@ -148,7 +149,9 @@ async function ulukaFetchTrades(productKey, limit, masterOnly) {
     side:           sideCol   ? String(row[sideCol] ?? '—').toUpperCase() : '—',
     profit:         ulukaNum(profitCol ? row[profitCol] : 0),
     profit_percent: ulukaNum(pctCol    ? row[pctCol]    : 0),
-    closed_at:      (dateCol && row[dateCol]) ? new Date(row[dateCol]).toISOString() : null
+        closed_at:      (dateCol && row[dateCol]) ? new Date(row[dateCol]).toISOString()
+                    : (dateFallback && row[dateFallback]) ? new Date(row[dateFallback]).toISOString()
+                    : null
   }));
 }
 
