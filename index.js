@@ -293,10 +293,37 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
     let pos = positions[i];
     if (pos.symbol !== symbol) continue;
     
-    const activeSl = pos.virtualSl || pos.slPrice;
+    let activeSl = pos.virtualSl || pos.slPrice;
     const closeSide = pos.side.toUpperCase() === 'BUY' ? 'Sell' : 'Buy';
 
     try { // ✅ START TRY BLOCK
+
+        if (pos.tp2Hit && !pos.tp3Hit) {
+          if (pos.side === 'Buy') {
+              const trailDistance = currentPrice * 0.015; // 1.5%
+              const proposedNewSl = currentPrice - trailDistance;
+              
+              if (proposedNewSl > pos.slPrice && proposedNewSl > pos.tp1Price) {
+                  await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: proposedNewSl, positionIdx: 0 });
+                  pos.slPrice = proposedNewSl;
+                  pos.virtualSl = proposedNewSl;
+                  activeSl = proposedNewSl; // Updates the variable we just changed to 'let'
+                  console.log(`\n[${now()}] 📈 TRAILING SL: ${pos.symbol} moved to ${proposedNewSl}`);
+              }
+          } 
+          else if (pos.side === 'Sell') {
+              const trailDistance = currentPrice * 0.015; // 1.5%
+              const proposedNewSl = currentPrice + trailDistance;
+              
+              if (proposedNewSl < pos.slPrice && proposedNewSl < pos.tp1Price) {
+                  await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: proposedNewSl, positionIdx: 0 });
+                  pos.slPrice = proposedNewSl;
+                  pos.virtualSl = proposedNewSl;
+                  activeSl = proposedNewSl;
+                  console.log(`\n[${now()}] 📈 TRAILING SL: ${pos.symbol} moved to ${proposedNewSl}`);
+              }
+          }
+      }
       
       // 🛑 1. CHECK TP3 (Full close)
       if ((pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price)) {
