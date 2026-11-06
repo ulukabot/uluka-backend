@@ -174,7 +174,7 @@ app.get('/api/public/trades', async (req, res) => {
       trades.sort((a, b) => new Date(b.closed_at || 0) - new Date(a.closed_at || 0));
       trades = trades.slice(0, limit);
     } else {
-      trades = await trades = await ulukaFetchTrades(product, limit, masterOnly);
+      trades = await ulukaFetchTrades(product, limit, masterOnly);
     }
 
     const wins     = trades.filter(t => t.profit > 0).length;
