@@ -65,7 +65,7 @@ const pool = new Pool({
 // If your tables are named differently, change them here:
 const PUBLIC_TRADE_TABLES = {
   forex:  'trade_log',
-  crypto: 'crypto_client_trades'
+  crypto: 'crypto_trades'      
 };
 
 // --- helpers ---
