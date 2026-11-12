@@ -6058,7 +6058,8 @@ const {
   api_key, api_secret,
   risk_percent, max_drawdown,
   exchange_name, symbols,
-  max_trades_per_symbol, max_total_trades
+  max_trades_per_symbol, max_total_trades,
+  min_sl_percent // 👈 NEW
 } = req.body;
 
     if (!account_id || !licence_key || !api_key || !api_secret) {
