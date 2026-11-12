@@ -253,7 +253,7 @@ async function runTick() {
     try {
         const balData = await masterBybit.getBalance();
         
-                // ✅ THE FIX: Read exactly the Wallet Balance, just like MT5's ACCOUNT_BALANCE
+                       // ✅ FOREX LOGIC: Read exactly the Wallet Balance, ignoring locked margin
         let equity = 0;
         if (balData && balData.list && balData.list.length > 0) {
             const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
