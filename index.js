@@ -285,7 +285,7 @@ async function runTick() {
   }
 }
 
-// 🛡️ POSITION MANAGEMENT (TPs, Breakeven, SL)
+// 🛡️ POSITION MANAGEMENT (New 2.0R, 3.5R, 4.5R Logic + Forex Adaptive Trailing)
 async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 0.001, minOrderQty = 0.001) {
   if (!openPositions[user.account_id]) return;
   const positions = openPositions[user.account_id];
@@ -296,52 +296,21 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
     
     let activeSl = pos.virtualSl || pos.slPrice;
     const closeSide = pos.side.toUpperCase() === 'BUY' ? 'Sell' : 'Buy';
+    const isBuy = pos.side.toUpperCase() === 'BUY';
 
-    try { // ✅ START TRY BLOCK
+    // Calculate 1R distance based on original TP1 (which is 2.0R)
+    const rDistance = Math.abs(pos.tp1Price - pos.entryPrice) / 2.0;
 
-        if (pos.tp2Hit && !pos.tp3Hit) {
-          if (pos.side === 'Buy') {
-              const trailDistance = currentPrice * 0.015; // 1.5%
-              const proposedNewSl = currentPrice - trailDistance;
-              
-              if (proposedNewSl > pos.slPrice && proposedNewSl > pos.tp1Price) {
-                  await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: proposedNewSl, positionIdx: 0 });
-                  pos.slPrice = proposedNewSl;
-                  pos.virtualSl = proposedNewSl;
-                  activeSl = proposedNewSl; // Updates the variable we just changed to 'let'
-                  console.log(`\n[${now()}] 📈 TRAILING SL: ${pos.symbol} moved to ${proposedNewSl}`);
-              }
-          } 
-          else if (pos.side === 'Sell') {
-              const trailDistance = currentPrice * 0.015; // 1.5%
-              const proposedNewSl = currentPrice + trailDistance;
-              
-              if (proposedNewSl < pos.slPrice && proposedNewSl < pos.tp1Price) {
-                  await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: proposedNewSl, positionIdx: 0 });
-                  pos.slPrice = proposedNewSl;
-                  pos.virtualSl = proposedNewSl;
-                  activeSl = proposedNewSl;
-                  console.log(`\n[${now()}] 📈 TRAILING SL: ${pos.symbol} moved to ${proposedNewSl}`);
-              }
-          }
-      }
-
-            // ==========================================
-      // 🛡️ PHASE 2: Zero-Risk Breakeven & Trailing
+    try {
       // ==========================================
-      
-      // 1. Calculate the True R-Distance for this trade
-      const riskAmount = pos.riskUSD; 
-      const rDistance = riskAmount / pos.qty;
-      const isBuy = pos.side.toUpperCase() === 'BUY';
-
-      // 2. BREAKEVEN SHIELD (Triggers at 0.5R)
+      // 1. 🛡️ BREAKEVEN SHIELD (Triggers at 1.0R)
+      // ==========================================
       if (!pos.breakEvenSet) {
-          const triggerPrice = isBuy ? (pos.entryPrice + (rDistance * 0.5)) : (pos.entryPrice - (rDistance * 0.5));
+          const triggerPrice = isBuy ? (pos.entryPrice + (rDistance * 1.0)) : (pos.entryPrice - (rDistance * 1.0));
           const hasHitTrigger = isBuy ? (currentPrice >= triggerPrice) : (currentPrice <= triggerPrice);
           
           if (hasHitTrigger) {
-              // Move SL to Entry + 10% of TP1 (which is 0.2R profit)
+              // Move SL to Breakeven + 10% profit (0.2R)
               const newSl = isBuy ? (pos.entryPrice + (rDistance * 0.2)) : (pos.entryPrice - (rDistance * 0.2));
               
               try {
@@ -365,17 +334,35 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
           }
       }
 
-      // 3. DYNAMIC TRAILING (Triggers at 1.0R and trails by 0.5R)
+      // ==========================================
+      // 2. 📈 ADAPTIVE TRAILING (Forex Logic)
+      // ==========================================
       if (pos.breakEvenSet) {
-          // Trail distance is 0.5R
-          const trailDistance = rDistance * 0.5;
-          const triggerPrice1R = isBuy ? (pos.entryPrice + rDistance) : (pos.entryPrice - rDistance);
-          const hasHit1R = isBuy ? (currentPrice >= triggerPrice1R) : (currentPrice <= triggerPrice1R);
+          // Forex Start Distance: 75% of SL distance
+          const startD = rDistance * 0.75;
+          const profit = isBuy ? (currentPrice - pos.entryPrice) : (pos.entryPrice - currentPrice);
 
-          if (hasHit1R) {
-              let proposedNewSl = isBuy ? (currentPrice - trailDistance) : (currentPrice + trailDistance);
+          if (profit >= startD) {
+              // Dynamic Multiplier based on profit ratio (from Forex file)
+              const profitRatio = profit / startD;
+              let dynamicMultiplier = 1.0;
               
-              // Only move SL in our favor (never backward)
+              if (profitRatio < 2.0) dynamicMultiplier = 0.8;
+              else if (profitRatio < 4.0) dynamicMultiplier = 1.0;
+              else dynamicMultiplier = 1.5;
+
+              // Calculate trail distance using the ATR passed from tradeEngine
+              const atrValue = pos.atr || (pos.entryPrice * 0.01); // Fallback to 1% if ATR missing
+              let trailDist = atrValue * dynamicMultiplier;
+              
+              // Ensure minimum trailing distance (e.g., 0.1% of price)
+              const minStop = currentPrice * 0.001;
+              trailDist = Math.max(trailDist, minStop * 2);
+
+              let proposedNewSl = isBuy ? (currentPrice - trailDist) : (currentPrice + trailDist);
+              proposedNewSl = parseFloat(proposedNewSl.toFixed(4));
+
+              // Monotonic guard: Only move SL in our favor
               const shouldUpdateSl = isBuy ? (proposedNewSl > pos.slPrice) : (proposedNewSl < pos.slPrice);
 
               if (shouldUpdateSl) {
@@ -383,28 +370,31 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
                       await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: proposedNewSl.toString(), positionIdx: 0 });
                       pos.slPrice = proposedNewSl;
                       pos.virtualSl = proposedNewSl;
-                      console.log(`\n[${now()}] 📈 TRAILING SL: ${pos.symbol} moved to ${proposedNewSl.toFixed(4)}`);
+                      console.log(`\n[${now()}] 📈 TRAILING SL: ${pos.symbol} moved to ${proposedNewSl.toFixed(4)} (Mult: ${dynamicMultiplier})`);
                   } catch (e) {
                       console.error(`❌ Failed to trail SL for ${pos.symbol}:`, e.message);
                   }
               }
           }
       }
-     
-      
-      // 🛑 1. CHECK TP3 (Full close)
-      if ((pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price)) {
+
+      // ==========================================
+      // 3. 🛑 CHECK TP3 (4.5R) - Full Close
+      // ==========================================
+      if ((isBuy && currentPrice >= pos.tp3Price) || (!isBuy && currentPrice <= pos.tp3Price)) {
         await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 });
         await closeTrade(user, i, pos, pos.tp3Price, 'TP3 Hit (Full Close)', bybit); 
         continue;
       }
 
-      // 🛑 2. CHECK TP2 (Close 30%, move SL to TP1)
-      if ((pos.side === 'Buy' && currentPrice >= pos.tp2Price) || (pos.side === 'Sell' && currentPrice <= pos.tp2Price)) {
+      // ==========================================
+      // 4. 🛑 CHECK TP2 (3.5R) - Close 60% of remaining
+      // ==========================================
+      if ((isBuy && currentPrice >= pos.tp2Price) || (!isBuy && currentPrice <= pos.tp2Price)) {
         if (!pos.tp2Hit) {
           pos.tp2Hit = true;
           
-          let rawQty = pos.qty * 0.30;
+          let rawQty = pos.qty * 0.60; // 60% of remaining
           let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
           closeQty = parseFloat(closeQty.toFixed(4));
 
@@ -413,19 +403,12 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
           await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 });
           
           if (closeQty < pos.qty) {
+              // Move SL to TP1 price (Lock in profit)
               await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.tp1Price, positionIdx: 0 });
               pos.virtualSl = pos.tp1Price; 
               pos.slPrice = pos.tp1Price; 
               pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
-              console.log(`\n[${now()}] ✂️ TP2 HIT: ${user.account_id} | ${symbol} | Closed 30% | SL moved to TP1`);
-              if (user.is_master && process.env.IS_MASTER === 'true') {
-                await tg.sendWebhook({ 
-                  type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-                  symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.tp1Price, 
-                  entry: pos.entryPrice, open_pnl: '30% Closed', 
-                  be_text: 'Uluka Ultima: TP2 Hit (30% Closed) — SL moved to TP1', ticket: pos.dbId, time: now() 
-                });
-              }
+              console.log(`\n[${now()}] ✂️ TP2 HIT: ${user.account_id} | ${symbol} | Closed 60% | SL moved to TP1`);
           } else {
               await closeTrade(user, i, pos, pos.tp2Price, 'TP2 Hit (Full Close)', bybit);
           }
@@ -433,12 +416,14 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
         }
       }
 
-      // 🛑 3. CHECK TP1 (Close 50%, move SL to Breakeven)
-      if ((pos.side === 'Buy' && currentPrice >= pos.tp1Price) || (pos.side === 'Sell' && currentPrice <= pos.tp1Price)) {
+      // ==========================================
+      // 5. 🛑 CHECK TP1 (2.0R) - Close 50%
+      // ==========================================
+      if ((isBuy && currentPrice >= pos.tp1Price) || (!isBuy && currentPrice <= pos.tp1Price)) {
         if (!pos.tp1Hit) {
           pos.tp1Hit = true;
           
-          let rawQty = pos.qty * 0.50;
+          let rawQty = pos.qty * 0.50; // 50% of position
           let closeQty = Math.floor(rawQty / qtyStep) * qtyStep;
           closeQty = parseFloat(closeQty.toFixed(4));
 
@@ -447,19 +432,13 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
           await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: closeQty.toString(), reduceOnly: true, positionIdx: 0 });
           
           if (closeQty < pos.qty) {
-              await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: pos.entryPrice, positionIdx: 0 });
-              pos.virtualSl = pos.entryPrice; 
-              pos.slPrice = pos.entryPrice; 
+              // Move SL to Breakeven + 10% profit (0.2R)
+              const lockSl = isBuy ? (pos.entryPrice + (rDistance * 0.2)) : (pos.entryPrice - (rDistance * 0.2));
+              await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: lockSl, positionIdx: 0 });
+              pos.virtualSl = lockSl; 
+              pos.slPrice = lockSl; 
               pos.qty = parseFloat((pos.qty - closeQty).toFixed(4));
-              console.log(`\n[${now()}] ✂️ TP1 HIT: ${user.account_id} | ${symbol} | Closed 50% | SL moved to Entry`);
-              if (user.is_master && process.env.IS_MASTER === 'true') {
-                await tg.sendWebhook({ 
-                  type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
-                  symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: pos.entryPrice, 
-                  entry: pos.entryPrice, open_pnl: '50% Closed', 
-                  be_text: 'Uluka Ultima: TP1 Hit (50% Closed) — SL moved to Breakeven', ticket: pos.dbId, time: now() 
-                });
-              }
+              console.log(`\n[${now()}] ✂️ TP1 HIT: ${user.account_id} | ${symbol} | Closed 50% | SL moved to +0.2R`);
           } else {
               await closeTrade(user, i, pos, pos.tp1Price, 'TP1 Hit (Full Close)', bybit);
           }
@@ -467,19 +446,21 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
         }
       }
 
-      // 🛑 4. CHECK STOP LOSS
-      if ((pos.side === 'Buy' && currentPrice <= activeSl) || (pos.side === 'Sell' && currentPrice >= activeSl)) {
+      // ==========================================
+      // 6. 🛑 CHECK STOP LOSS (Hard Stop)
+      // ==========================================
+      if ((isBuy && currentPrice <= activeSl) || (!isBuy && currentPrice >= activeSl)) {
         await bybit.placeOrder({ category: 'linear', symbol: pos.symbol, side: closeSide, orderType: 'Market', qty: pos.qty.toString(), reduceOnly: true, positionIdx: 0 });
         await closeTrade(user, i, pos, activeSl, 'SL Hit', bybit); 
         continue;
       }
 
     } catch (error) {
-      // 🚨 THE CRASH FIX: Catch the 110017 error
+      // 🚨 Catch the 110017 ghost trade error
       const errMsg = error.message || '';
       if (error.retCode === 110017 || errMsg.includes('110017')) {
-        console.log(`\n[${now()}] ⚠️ Bybit says position is zero for ${pos.symbol}. Removing ghost trade from local state.`);
-        openPositions[user.account_id].splice(i, 1); // Remove from memory so it stops trying to close it
+        console.log(`\n[${now()}] ⚠️ Bybit says position is zero for ${pos.symbol}. Removing ghost trade.`);
+        openPositions[user.account_id].splice(i, 1);
       } else {
         console.error(`\n[${now()}] ❌ Error managing position ${pos.symbol}:`, error.message);
       }
