@@ -6096,10 +6096,11 @@ const {
         max_drawdown = $7, 
         exchange_name = $8,
         symbols = $9,
-        max_trades_per_symbol = $10,
+         max_trades_per_symbol = $10,
         max_total_trades = $11,
+        min_sl_percent = $12, // 👈 NEW
         status = 'ACTIVE'
-    WHERE licence_key = $12
+    WHERE licence_key = $13
 `, [
     account_id,
     client_name || 'Crypto Client',
@@ -6112,6 +6113,7 @@ const {
     symbols || '',
     parseInt(max_trades_per_symbol) || 1,
     parseInt(max_total_trades) || 5,
+    parseFloat(min_sl_percent) || 1.0, // 👈 NEW
     licence_key
 ]);
 
