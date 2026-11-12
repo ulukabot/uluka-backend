@@ -324,6 +324,72 @@ async function manageOpenPositions(user, symbol, currentPrice, bybit, qtyStep = 
               }
           }
       }
+
+            // ==========================================
+      // 🛡️ PHASE 2: Zero-Risk Breakeven & Trailing
+      // ==========================================
+      
+      // 1. Calculate the True R-Distance for this trade
+      const riskAmount = pos.riskUSD; 
+      const rDistance = riskAmount / pos.qty;
+      const isBuy = pos.side.toUpperCase() === 'BUY';
+
+      // 2. BREAKEVEN SHIELD (Triggers at 0.5R)
+      if (!pos.breakEvenSet) {
+          const triggerPrice = isBuy ? (pos.entryPrice + (rDistance * 0.5)) : (pos.entryPrice - (rDistance * 0.5));
+          const hasHitTrigger = isBuy ? (currentPrice >= triggerPrice) : (currentPrice <= triggerPrice);
+          
+          if (hasHitTrigger) {
+              // Move SL to Entry + 10% of TP1 (which is 0.2R profit)
+              const newSl = isBuy ? (pos.entryPrice + (rDistance * 0.2)) : (pos.entryPrice - (rDistance * 0.2));
+              
+              try {
+                  await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: newSl.toString(), positionIdx: 0 });
+                  pos.slPrice = newSl;
+                  pos.virtualSl = newSl;
+                  pos.breakEvenSet = true;
+                  console.log(`\n[${now()}] 🛡️ BE HIT: ${pos.symbol} | SL moved to +0.2R ($${newSl.toFixed(4)})`);
+                  
+                  if (user.is_master && process.env.IS_MASTER === 'true') {
+                      await tg.sendWebhook({ 
+                          type: 'POSITION_UPDATE', source: 'MASTER', asset_class: 'CRYPTO', 
+                          symbol: pos.symbol, direction: pos.side.toUpperCase(), new_sl: newSl, 
+                          entry: pos.entryPrice, open_pnl: 'Risk-Free', 
+                          be_text: 'Uluka Ultima: Trade is now Risk-Free (SL moved to +0.2R)', ticket: pos.dbId, time: now() 
+                      });
+                  }
+              } catch (e) {
+                  console.error(`❌ Failed to set BE for ${pos.symbol}:`, e.message);
+              }
+          }
+      }
+
+      // 3. DYNAMIC TRAILING (Triggers at 1.0R and trails by 0.5R)
+      if (pos.breakEvenSet) {
+          // Trail distance is 0.5R
+          const trailDistance = rDistance * 0.5;
+          const triggerPrice1R = isBuy ? (pos.entryPrice + rDistance) : (pos.entryPrice - rDistance);
+          const hasHit1R = isBuy ? (currentPrice >= triggerPrice1R) : (currentPrice <= triggerPrice1R);
+
+          if (hasHit1R) {
+              let proposedNewSl = isBuy ? (currentPrice - trailDistance) : (currentPrice + trailDistance);
+              
+              // Only move SL in our favor (never backward)
+              const shouldUpdateSl = isBuy ? (proposedNewSl > pos.slPrice) : (proposedNewSl < pos.slPrice);
+
+              if (shouldUpdateSl) {
+                  try {
+                      await bybit.setTradingStop({ category: 'linear', symbol: pos.symbol, stopLoss: proposedNewSl.toString(), positionIdx: 0 });
+                      pos.slPrice = proposedNewSl;
+                      pos.virtualSl = proposedNewSl;
+                      console.log(`\n[${now()}] 📈 TRAILING SL: ${pos.symbol} moved to ${proposedNewSl.toFixed(4)}`);
+                  } catch (e) {
+                      console.error(`❌ Failed to trail SL for ${pos.symbol}:`, e.message);
+                  }
+              }
+          }
+      }
+     
       
       // 🛑 1. CHECK TP3 (Full close)
       if ((pos.side === 'Buy' && currentPrice >= pos.tp3Price) || (pos.side === 'Sell' && currentPrice <= pos.tp3Price)) {
