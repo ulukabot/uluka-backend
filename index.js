@@ -253,16 +253,17 @@ async function runTick() {
     try {
         const balData = await masterBybit.getBalance();
         
-        // ✅ THE CRASH FIX: Safely extract equity based on the format returned
+                // ✅ THE FIX: Read exactly the Wallet Balance, just like MT5's ACCOUNT_BALANCE
         let equity = 0;
         if (balData && balData.list && balData.list.length > 0) {
-            // Raw Bybit API format
-            const totalEquity = parseFloat(balData.list[0]?.totalEquity || 0);
             const usdt = balData.list[0]?.coin?.find(c => c.coin === 'USDT');
-            equity = totalEquity > 0 ? totalEquity : parseFloat(usdt?.equity || 0);
+            if (usdt && parseFloat(usdt.walletBalance) > 0) {
+                equity = parseFloat(usdt.walletBalance);
+            } else {
+                equity = parseFloat(balData.list[0]?.totalEquity || 0);
+            }
         } else if (balData) {
-            // Custom getBalance() format from your lib/bybit.js
-            equity = parseFloat(balData.totalEquity || balData.availableMargin || 0);
+            equity = parseFloat(balData.walletBalance || balData.totalEquity || 0);
         }
 
         if (equity <= 0) {
