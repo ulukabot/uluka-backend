@@ -6350,6 +6350,29 @@ app.use((err, req, res, next) => {
     res.status(500).json({ success: false, error: err.message });
 });
 
+// ==========================================
+// 🦉 HOURLY PROMO CRON JOB (Standard JS)
+// ==========================================
+setInterval(async () => {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const freeChatId = process.env.TELEGRAM_FREE_CHANNEL_ID; 
+
+    if (!botToken || !freeChatId) return;
+
+    const promoText = `🦉 **ULUKA ULTRA — PREMIUM ACCESS** 🦉\n\nAre you tired of missing the big moves? The Uluka AI engine is scanning the markets 24/7.\n\n🚀 **What you get in Premium:**\n✅ Instant Crypto & Forex Signals\n✅ Exact Entry, SL, and TP1/TP2/TP3 Levels\n✅ Institutional Risk Management (R-Multiple Math)\n\n👉 **Upgrade today:** https://uluka.trade/premium\n💬 **Contact Admin:** @WiseOwlUluka`;
+
+    try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: freeChatId, text: promoText, parse_mode: 'Markdown' })
+        });
+        console.log(`[PROMO] ✅ Promo sent to free group.`);
+    } catch (error) {
+        console.error(`[PROMO] ❌ Failed:`, error.message);
+    }
+}, 60 * 60 * 1000); // 60 minutes * 60 seconds * 1000 ms
+
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () => {
