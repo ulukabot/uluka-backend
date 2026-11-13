@@ -218,6 +218,17 @@ const ADMIN_SECRET       = process.env.ADMIN_SECRET       || 'default-secret-cha
 // ─── Premium channel link (update this to your actual invite link) ───
 const PREMIUM_LINK = process.env.PREMIUM_LINK || 'https://t.me/WiseOwlUluka';
 
+// ─── Premium Nudge Config ─────────────────────────────
+// Change PREMIUM_NUDGE_INTERVAL_HOURS in Railway to control frequency
+//   1 = every hour  (16/day, 07-22 UTC)
+//   2 = every 2 hr  (8/day)
+//   4 = every 4 hr  (4/day, professional)
+//   6 = every 6 hr  (3/day)
+const PREMIUM_FORM_URL = process.env.PREMIUM_FORM_URL
+    || 'https://docs.google.com/forms/d/e/1FAIpQLSfi3DU4Xe5BC3d4WV9y0fwjS5tgKOv3nVJKGJsv-yAnDi9DnQ/viewform';
+const PREMIUM_NUDGE_INTERVAL_HOURS = Math.max(1, parseInt(process.env.PREMIUM_NUDGE_INTERVAL_HOURS) || 1);
+let lastPremiumNudgeTime = 0;
+
 // ─── Sanitize AI output for Telegram HTML mode ───────────
 // Converts markdown bold/italic/code to Telegram-safe HTML tags
 function sanitizeForTelegram(text) {
@@ -4693,6 +4704,80 @@ app.all('/cron/publish-approved-posts', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// CRON: Premium Nudge — hourly "join premium" message
+// ═══════════════════════════════════════════════════════════
+app.all('/cron/premium-nudge', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (secret !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+
+  try {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+
+    // 1. Active hours only (07:00–22:59 UTC)
+    if (utcHour < 7 || utcHour > 22) {
+      return res.json({ ok: true, skipped: 'Outside active hours (07-22 UTC)' });
+    }
+
+    // 2. Interval gate — only fire on PREMIUM_NUDGE_INTERVAL_HOURS boundaries
+    if (utcHour % PREMIUM_NUDGE_INTERVAL_HOURS !== 0) {
+      return res.json({ ok: true, skipped: `Not on ${PREMIUM_NUDGE_INTERVAL_HOURS}h boundary` });
+    }
+
+    // 3. Anti-duplicate — don't send twice within 55 min (cron retry protection)
+    if (Date.now() - lastPremiumNudgeTime < 55 * 60 * 1000) {
+      return res.json({ ok: true, skipped: 'Sent less than 55 min ago' });
+    }
+
+    // 4. Skip if a MASTER trade signal fired in the last 10 min (don't bury live signal)
+    const recentSignal = await pool.query(
+      `SELECT 1 FROM trade_log
+       WHERE source = 'MASTER' AND time > NOW() - INTERVAL '10 minutes'
+       LIMIT 1`
+    );
+    if (recentSignal.rows.length > 0) {
+      return res.json({ ok: true, skipped: 'Live signal in last 10 min' });
+    }
+
+    // 5. Build the message
+    const promoMsg =
+      `🦉 <b>ULUKA ULTRA — PREMIUM ACCESS</b>\n\n` +
+      `Still trading on free teasers?\n` +
+      `Premium members get:\n\n` +
+      `✅ Real-time entries (no delay)\n` +
+      `✅ Full SL + TP1 / TP2 / TP3\n` +
+      `✅ Priority signal alerts\n` +
+      `✅ Live trade cards with live R:R\n` +
+      `✅ Access to Uluka Ultra EA (MT5)\n\n` +
+      `📝 <b>Apply here:</b> <a href="${PREMIUM_FORM_URL}">Click to apply →</a>\n` +
+      `💬 <b>Questions?</b> @WiseOwlUluka\n\n` +
+      `🦉 <i>Trade with the Hive.</i>`;
+
+    // 6. Send to free channel
+    if (!FREE_GROUP_ID) {
+      console.error('[PREMIUM-NUDGE] FREE_GROUP_ID not set in env');
+      return res.status(500).json({ ok: false, error: 'FREE_GROUP_ID missing' });
+    }
+
+    const sent = await sendToTelegram(FREE_GROUP_ID, promoMsg);
+
+    if (sent) {
+      lastPremiumNudgeTime = Date.now();
+      console.log(`[PREMIUM-NUDGE] ✅ Sent at ${utcHour}:00 UTC`);
+      return res.json({ ok: true, sent: true, utcHour });
+    } else {
+      console.error('[PREMIUM-NUDGE] ❌ Telegram send failed');
+      return res.status(500).json({ ok: false, error: 'Telegram send failed' });
+    }
+
+  } catch (err) {
+    console.error('[PREMIUM-NUDGE] ❌ Error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════
 // CRON: Weekly Market Outlook (Monday)
 // ═══════════════════════════════════════════════════════════
 app.all('/cron/weekly-market-outlook', async (req, res) => {
@@ -5423,6 +5508,9 @@ app.all('/cron/dispatcher', async (req, res) => {
 
     // Every hour at :xx → publish approved posts
     await runEndpoint('/cron/publish-approved-posts', 'publish_posts');
+
+        // Every hour → premium nudge (endpoint self-gates on active hours + interval + cooldowns)
+    await runEndpoint('/cron/premium-nudge', 'premium_nudge');
 
         // Every hour → Expiry Check
     await runEndpoint('/admin/run-expiry', 'expiry_check');
@@ -6354,29 +6442,6 @@ app.use((err, req, res, next) => {
     console.error("🚨 Backend Error:", err.message);
     res.status(500).json({ success: false, error: err.message });
 });
-
-// ==========================================
-// 🦉 HOURLY PROMO CRON JOB (Standard JS)
-// ==========================================
-setInterval(async () => {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const freeChatId = process.env.TELEGRAM_FREE_CHANNEL_ID; 
-
-    if (!botToken || !freeChatId) return;
-
-    const promoText = `🦉 **ULUKA ULTRA — PREMIUM ACCESS** 🦉\n\nAre you tired of missing the big moves? The Uluka AI engine is scanning the markets 24/7.\n\n🚀 **What you get in Premium:**\n✅ Instant Crypto & Forex Signals\n✅ Exact Entry, SL, and TP1/TP2/TP3 Levels\n✅ Institutional Risk Management (R-Multiple Math)\n\n👉 **Upgrade today:** https://uluka.trade/premium\n💬 **Contact Admin:** @WiseOwlUluka`;
-
-    try {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: freeChatId, text: promoText, parse_mode: 'Markdown' })
-        });
-        console.log(`[PROMO] ✅ Promo sent to free group.`);
-    } catch (error) {
-        console.error(`[PROMO] ❌ Failed:`, error.message);
-    }
-}, 60 * 60 * 1000); // 60 minutes * 60 seconds * 1000 ms
 
 // ─── START ──────────────────────────────────────────────────
 const PORT = process.env.PORT || 8080;
