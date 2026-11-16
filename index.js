@@ -1497,6 +1497,7 @@ app.get('/sync', async (req, res) => {
         res.json({ kill_switch: 'OFF', multiplier: 1.0, min_confidence: 0, news_filter: 'ON' });
     }
 });
+
 // ─── ROUTE 5: TRADE SIGNAL ──────────────────────────────────
 app.post('/hoot', async (req, res) => {
     try {
@@ -1509,8 +1510,51 @@ app.post('/hoot', async (req, res) => {
         // ── Use the shared formatter ──
         const { premiumMsg, freeMsg } = buildHootMessages(d);
 
+        // 1. ALWAYS SEND TO PREMIUM
         if (PREMIUM_GROUP_ID) await sendToTelegram(PREMIUM_GROUP_ID, premiumMsg);
-        if (FREE_GROUP_ID) await sendToTelegram(FREE_GROUP_ID, freeMsg);
+
+        // 2. CHECK IF IT'S A PREMIUM-ONLY PAIR
+        const premiumPairsStr = d.premium_pairs || "XAUUSD,XAGUSD";
+        const premiumPairs = premiumPairsStr.split(',').map(s => s.trim().toUpperCase());
+        const isPremiumPair = premiumPairs.some(pair => (d.symbol || "").toUpperCase().includes(pair));
+
+        if (isPremiumPair) {
+            console.log(`[FREE TG] Blocked ${d.symbol} - Premium-only pair.`);
+            return res.send('HOOT_SENT_PREMIUM_ONLY');
+        }
+
+        // 3. APPLY FREE TELEGRAM LIMITS
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Initialize tracker if it doesn't exist
+        if (!global.freeHootTracker) {
+            global.freeHootTracker = { date: today, total: 0, symbols: {} };
+        }
+
+        // Reset tracker if it's a new day
+        if (global.freeHootTracker.date !== today) {
+            global.freeHootTracker = { date: today, total: 0, symbols: {} };
+        }
+
+        // Get limits from EA payload, with safe fallbacks
+        const maxDailyLimit = parseInt(d.free_signal_limit) || 1;
+        const maxPerSymbolLimit = parseInt(d.free_limit_per_symbol) || 1;
+        
+        const symbolCount = global.freeHootTracker.symbols[d.symbol] || 0;
+
+        // 4. SEND TO FREE ONLY IF UNDER LIMITS
+        if (FREE_GROUP_ID && global.freeHootTracker.total < maxDailyLimit && symbolCount < maxPerSymbolLimit) {
+            await sendToTelegram(FREE_GROUP_ID, freeMsg);
+            
+            // Record the send
+            global.freeHootTracker.total++;
+            global.freeHootTracker.symbols[d.symbol] = symbolCount + 1;
+            
+            console.log(`[FREE TG] Sent ${d.symbol}. Total today: ${global.freeHootTracker.total}/${maxDailyLimit}`);
+        } else {
+            console.log(`[FREE TG] Blocked ${d.symbol}. Daily limit (${maxDailyLimit}) or per-symbol limit reached.`);
+        }
+
         res.send('HOOT_SENT');
     } catch(e) { 
         console.error('🔥 /hoot error:', e.message);
